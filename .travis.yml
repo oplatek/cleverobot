@@ -1,0 +1,12 @@
+language: python
+
+python:
+    - "2.7"
+    - "3.4"
+
+install:
+    - pip install -r bot-requirements.txt
+
+script:
+    - nose2 bot
+
