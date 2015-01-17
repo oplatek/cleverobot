@@ -21,7 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--no-debug', dest='debug', action='store_false')
     parser.set_defaults(debug=True)
     parser.add_argument('-l', '--log', default='cleverbot.log')
-    args= parser.parse_args()
+    args = parser.parse_args()
 
     file_handler = logging.FileHandler(args.log, encoding='utf8')
     file_handler.setFormatter(logging.Formatter(

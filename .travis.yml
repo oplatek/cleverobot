@@ -8,5 +8,8 @@ install:
     - pip install -r bot-requirements.txt
 
 script:
-    - nose2 bot
+    - py.test app --pep8 app -v --cov-report term-missing
+    - py.test bot --pep8 bot -v --cov bot --cov-report term-missing
 
+after_success:
+    - coveralls
