@@ -18,8 +18,8 @@ class ChatBot(multiprocessing.Process):
     def __init__(self, url_input, url_output, name='ChatBot'):
 
         self.context = zmq.Context()
-        self.isocket = context.socket(zmq.PULL)
-        self.osocket = context.socket(zmq.PUSH)
+        self.isocket = self.context.socket(zmq.PULL)
+        self.osocket = self.context.socket(zmq.PUSH)
         self.isocket.bind(url_input)
         self.osocket.bind(url_output)
         self.state = ('not_started', datetime.datetime.utcnow()) 

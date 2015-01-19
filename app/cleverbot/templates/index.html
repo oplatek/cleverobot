@@ -1,18 +1,16 @@
 {% extends "layout.html" %}
 {% block extra_css %}
-<script async src="{{ url_for('static', filename='chat.css') }}"></script>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='chat.css') }}">
 {% endblock %}
 {% block extra_js %}
-<script async src="{{ url_for('static', filename='js/chat.js') }}"></script>
-{% endblock %}
-<script src="{{ url_for('static', filename='js/socket.io.js') }}"></script>
-<script async src="{{ url_for('static', filename='js/chat.js') }}"></script>
+    <script async src="{{ url_for('static', filename='js/socket.io.js') }}"></script>
+    <script async src="{{ url_for('static', filename='js/chat.js') }}"></script>
 {% endblock %}
 {% block content %}
 <ul id="messages">
 </ul>
 <form action="">
-    <input id="m" autocomplete="off" />
+    <input id="m" autocomplete="off" value="Say hello..."/>
     <button>Send</button>
 </form>
 {% endblock %}
