@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+{% block title %}Clever robot error {{ error }} {% endblock %}
+{% block body %}
+<h2>
+    {{ msg }}
+</h2>
+<div>
+    You might want to <a href="{{ url_for('index') }}">start again</a>
+    or report a bug using <a href="https://github.com/oplatek/cleverobot/issues">Github cleverobot bug tracker</a>.
+</div>
+{% endblock %}

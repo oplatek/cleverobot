@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+    {% block head %}
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='bootstrap.css') }}">
+    {% block extra_css %}{% endblock %}
+    {% block extra_js %}{% endblock %}
+    <script async src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
+    <title>{% block title %} Clever robot {% endblock %}</title>
+    {% endblock %}
+</head>
+<body>
+    <div class="container">
+    {% block body %}
+        <div class="page-header">
+            <div class="row">
+                <div class="span9">
+                    <h1>Cleve-r-obot <small>so clever that cannot spell two words</small></h1>
+                </div>
+            </div>
+        </div>
+        <div class="content">
+        {% block content %}
+        {% endblock %}
+        </div>
+    {% endblock %}
+    </div>
+</body>
+</html>

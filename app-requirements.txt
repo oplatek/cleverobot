@@ -1,1 +1,3 @@
 flask
+socketIO-client
+jsonschema
