@@ -1,31 +1,31 @@
 #!/usr/bin/env python
 # encoding: utf-8
+from gevent import monkey
+monkey.patch_thread()
+from threading import Thread
+monkey.patch_time()
+import time
+
 from flask import Flask, render_template
 from flask.ext.socketio import SocketIO, emit, session
 import os
-import zmq.green as zmq
-from zmq.green.eventloop import zmqstream
+import zmq as zmq
+from zmq.eventloop import zmqstream
+# import zmq.green as zmq
+# from zmq.green.eventloop import zmqstream
 import argparse
 import logging
+import multiprocessing
 
-from cbot.bot import ChatBot
+from cbot.bot import ChatBot, ChatBotConnector
+from cbot.bot_exceptions import *
 
 app = Flask(__name__)
 app.secret_key = 12345  # TODO
 socketio = SocketIO(app)
-CBOT_INPUT='tcp://127.0.0.1:6666'
-CBOT_OUTPUT='tcp://127.0.0.1:7777' 
+CBOT_INPUT='6666'
+CBOT_OUTPUT='7777' 
 
-class BotEndException:
-    pass
-
-
-class BotSendException:
-    pass
-
-
-class BotNotAvailableException:
-    pass
 
 @app.route('/index')
 @app.route('/')
@@ -49,14 +49,22 @@ def page_not_found(e):
 @socketio.on('begin')
 def begin_dialog(msg):
     try:
-        session['chatbot'] = ChatbotConnector(web_response,
+        session['chatbot'] = ChatBotConnector(web_response, 
                                                 CBOT_INPUT, 
-                                                CBOT_OUTPUT)
-        app.logger.debug('TODO setup msg %s' % msg)
+                                                CBOT_OUTPUT, 
+                                                )
+        app.logger.debug('ChatbotConnector initiated')
+        t = Thread(target=session['chatbot'].run_blocking)
+        t.start()
     except BotNotAvailableException as e:  # TODO more specific error handling
         err_msg = {'status': 'error', 'message': 'Chatbot not available'}
         emit('server_error', err_msg)
         app.logger.error('Error: %s\nInput config %s\nSent to client %s' % (e,  msg, err_msg))
+    except BotSendException as e:
+        err_msg = {'status': 'error', 'message': 'Chatbot cannot send messages'}
+        emit('server_error', err_msg)
+        app.logger.error('Error: %s\nSent to client %s' % (e, err_msg))
+        del session['chatbot']
 
 
 @socketio.on('utterance')
@@ -88,31 +96,8 @@ def end_recognition(msg):
 
 
 def web_response(msg):
-    emit('socketbot', msg)
+    socketio.emit('socketbot', msg)
     app.logger.debug('sent: %s' % str(msg))
-
-
-class ChatbotConnector:
-
-    def __init__(self, response_cb, input_add, output_add):
-        self.response = response_cb
-        self.context = zmq.Context()
-        self.iresender = self.context.socket(zmq.PUSH)
-        self.oresender = self.context.socket(zmq.PULL)
-        self.iresender.bind(input_add)
-        self.oresender.bind(output_add)
-        stream_pull = zmqstream.ZMQStream(self.oresender)
-        stream_pull.on_recv(response_cb)
-
-        app.logger.debug('input_add: %s \noutput_add: %s\n' % (input_add, output_add))
-        self.bot = ChatBot(input_add, output_add)
-        # self.bot.start()
-
-        # TODO do I need to start the loop like here?: http://learning-0mq-with-pyzmq.readthedocs.org/en/latest/pyzmq/multisocket/tornadoeventloop.html 
-
-    def send(self, msg):
-        app.logger.debug('Sending msg to Chatbot: "%s"\n' % msg)
-        self.iresender.send_json(msg)
 
 
 if __name__ == '__main__':
