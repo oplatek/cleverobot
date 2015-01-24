@@ -55,6 +55,7 @@ class ChatBot(multiprocessing.Process):
     '''
     def __init__(self, input_port, output_port, name='ChatBot'):
         super(ChatBot, self).__init__()
+        self.daemon = True
 
         self.input_port = input_port
         self.output_port = output_port
@@ -82,7 +83,11 @@ class ChatBot(multiprocessing.Process):
 
     def generate_utt(self, msg):
         assert isinstance(msg, dict)  # TODO validate json and return error msg
-        self.send_utt('Hi %(user)s, you said "%(utterance)s, right?' % msg)
+        utt = msg['utterance']
+        if len(utt) == 0:
+            utt = '...'
+        # self.send_utt('you said "%s", right?' % utt)
+        self.send_utt('You said "%s", right?' % utt)
 
     def send_utt(self, utt):
         msg = {
