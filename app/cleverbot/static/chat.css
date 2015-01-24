@@ -1,8 +1,27 @@
-.utterance {
+
+.socketbot {
     background-color: #E6E6E6;
+    text-align: right;
 }
 
 .user {
     background-color: #F1F1F1;
 }
 
+#messages { 
+    margin: 0; 
+    padding: 0; 
+    list-style-type: none; 
+    position: absolute;
+    width: 940px;
+    height: 70%;
+    overflow: scroll;
+}
+#messages li { 
+    padding: 5px 10px; 
+}
+
+form {
+    padding: 10px;
+    width:100%;
+}

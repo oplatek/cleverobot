@@ -13,7 +13,9 @@ $(document).ready(function() {
 
     $('form').submit(function(){
         var utt_sended = $('#messages li').length;
-        var msg = {'time': 'none', 'user':'human', 'utterance':$('#m').val()};
+        var $m = $('#m');
+        var $messages = $('#messages');
+        var msg = {'time': 'none', 'user':'human', 'utterance': $m.val()};
         console.log('Sending utterance[' + utt_sended +']: ' + msg)
         if(utt_sended == 0) {
             console.log('Beginning websocket connection')
@@ -21,13 +23,17 @@ $(document).ready(function() {
         }
         console.log('Sending utterance ' + msg)
         socket.emit('utterance', msg);
-        $('#m').val('');
+        $messages.prepend($('<li class="user">').text($m.val()));
+        $messages.scrollTop(0);
+        $m.val('');
         return false;
     });
 
     socket.on('socketbot', function(msg){
         console.log('Receiving msg' + msg);
-        $('#messages').append($('<li class="socketbot">').text(msg.utterance));
+        var $messages = $('#messages');
+        $messages.prepend($('<li class="socketbot">').text(msg.utterance));
+        $messages.scrollTop(0);
     });
     socket.on('server_error', function(msg){
         console.log(msg);

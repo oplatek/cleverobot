@@ -7,10 +7,10 @@
     <script async src="{{ url_for('static', filename='js/chat.js') }}"></script>
 {% endblock %}
 {% block content %}
-<ul id="messages">
-</ul>
 <form action="">
-    <input id="m" autocomplete="off" value="Say hello..."/>
+    <input id="m" autocomplete="off" value="Hello..."/>
     <button>Send</button>
 </form>
+<ul id="messages">
+</ul>
 {% endblock %}
