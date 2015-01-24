@@ -5,11 +5,15 @@ import datetime
 import logging
 import time
 import errno
+import gevent
+from gevent import Greenlet
 
 
-class ChatBotConnector(object):
+class ChatBotConnector(Greenlet):
 
     def __init__(self, response_cb, input_port, output_port, logger=None):
+        super(ChatBotConnector, self).__init__()
+
         self.context = zmq.Context()
         self.iresender = self.context.socket(zmq.PUSH)
         self.oresender = self.context.socket(zmq.PULL)
@@ -18,8 +22,6 @@ class ChatBotConnector(object):
         self.poller = zmq.Poller()
         self.poller.register(self.oresender, zmq.POLLIN)
 
-        self.bot = ChatBot(input_port, output_port)
-        self.bot.start()
 
         self.response = response_cb
         self.should_run = True # change is based on the messages
@@ -29,13 +31,12 @@ class ChatBotConnector(object):
         print('Sending msg to Chatbot: "%s"\n' % msg)
         self.iresender.send_json(msg)
 
-    def run_blocking(self):
+    def _run(self):
         while self.should_run:
-            socks = dict(self.poller.poll(timeout=10))
+            socks = dict(self.poller.poll())
             if self.oresender in socks and socks[self.oresender] == zmq.POLLIN:
                 msg = self.oresender.recv_json()
                 self.response(msg)
-            time.sleep(0.050)
 
     def finalize(self, msg):
         self.should_run = False
@@ -73,9 +74,10 @@ class ChatBot(multiprocessing.Process):
         self._after_fork_init()
 
         while self.should_run():
-            socks = dict(self.poller.poll())
-            if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
-                msg = self.isocket.recv_json()
+            # socks = dict(self.poller.poll())
+            # if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
+                # msg = self.isocket.recv_json()
+            msg = self.isocket.recv_json()
             self.generate_utt(msg)
 
     def generate_utt(self, msg):
