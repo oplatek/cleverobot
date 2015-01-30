@@ -1,3 +1,5 @@
 flask
 socketIO-client
 jsonschema
+# gunicorn
+flask-socketio

@@ -5,11 +5,10 @@ python:
     - "3.4"
 
 install:
-    - pip install -r bot-requirements.txt
+    - pip install -r bot-requirements.txt -r app-requirements.txt
 
 script:
-    - py.test app --pep8 app -v --cov-report term-missing
-    - py.test bot --pep8 bot -v --cov bot --cov-report term-missing
+    - make test
 
 after_success:
     - coveralls

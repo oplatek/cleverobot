@@ -75,18 +75,16 @@ class ChatBot(multiprocessing.Process):
         self._after_fork_init()
 
         while self.should_run():
-            # socks = dict(self.poller.poll())
-            # if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
-                # msg = self.isocket.recv_json()
-            msg = self.isocket.recv_json()
-            self.generate_utt(msg)
+            socks = dict(self.poller.poll())
+            if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
+                msg = self.isocket.recv_json()
+                self.generate_utt(msg)
 
     def generate_utt(self, msg):
         assert isinstance(msg, dict)  # TODO validate json and return error msg
         utt = msg['utterance']
         if len(utt) == 0:
             utt = '...'
-        # self.send_utt('you said "%s", right?' % utt)
         self.send_utt('You said "%s", right?' % utt)
 
     def send_utt(self, utt):

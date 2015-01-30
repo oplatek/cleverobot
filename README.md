@@ -6,8 +6,6 @@
 [![Coverage Status](https://coveralls.io/repos/oplatek/cleverobot/badge.svg)](https://coveralls.io/r/oplatek/cleverobot)
 
 ## Style and libraries used
-* Mock, py.test
 * PyZMQ:
-    * TODO Logging. See http://zeromq.github.io/pyzmq/logging.html
-    * TODO Tornado ioloop. See http://zeromq.github.io/pyzmq/eventloop.html
+    * zmq.green for webapp
 

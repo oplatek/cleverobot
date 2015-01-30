@@ -1,2 +1,3 @@
 pyzmq
-numpy
+# numpy
+nose

@@ -97,6 +97,8 @@ if __name__ == '__main__':
     parser.add_argument('--bot-input',default='6666')
     parser.add_argument('--bot-output',default='7777')
     args = parser.parse_args()
+    
+    print 'args: %s' % args
 
     cbot_input = args.bot_input
     cbot_output = args.bot_output
