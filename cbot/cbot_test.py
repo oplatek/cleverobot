@@ -16,8 +16,8 @@ class ChatBotConnectorTest(unittest.TestCase):
 class ChatBotTest(unittest.TestCase):
 
     def setUp(self):
-        self.input_port = '4000'
-        self.output_port = '5000'
+        self.input_port = '4001'
+        self.output_port = '5001'
         self.context = zmq.Context()
         self.pull_socket = self.context.socket(zmq.PULL)
         self.push_socket = self.context.socket(zmq.PUSH)
@@ -25,7 +25,7 @@ class ChatBotTest(unittest.TestCase):
         self.push_socket.connect("tcp://localhost:%s" % self.input_port)
         self.poller = zmq.Poller()
         self.poller.register(self.pull_socket, zmq.POLLIN)
-        self.timeout = 3000.0 # ms
+        self.timeout = 1000.0 # ms
 
     def tearDown(self):
         pass

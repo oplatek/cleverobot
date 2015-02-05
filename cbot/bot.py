@@ -1,15 +1,15 @@
+#!/usr/bin/env python
+# encoding: utf-8
 # from __future__ import unicode_literals
 import multiprocessing
 import zmq.green as zmq
 import datetime
 import logging
-import time
-import errno
-import gevent
 from gevent import Greenlet
 import dm
 import kb
 import sys
+import nlg
 
 
 def get_chatbot_logger():
@@ -64,7 +64,7 @@ class ChatBot(multiprocessing.Process):
     If the subtask is:
     a) too time consuming
     b) needs to generate events asynchronously
-    it was splitted it to process and registered using zmq sockets.
+    it was split it to process and registered using zmq sockets.
     The obvious necessary sockets used are for input and output
     of the chatbot.
     '''
@@ -81,12 +81,10 @@ class ChatBot(multiprocessing.Process):
         else:
             self.logger = logger
         self.kb = kb.KnowledgeBase() 
-        self.state = dm.State() 
+        self.state = dm.State(self.logger)
         self.parse_to_kb = kb.parse_to_kb
-        # TODO replace dummy lamda functions with something uselful
-        self.update_state = lambda y, x: x
-        self.decide_action = lambda x: x
-        self.generate_utt = lambda x, kb: x
+        self.policy = dm.Policy(self.logger)
+        self.nlg = nlg.Nlg(logger)
 
 
     def _after_fork_init(self):
@@ -97,6 +95,19 @@ class ChatBot(multiprocessing.Process):
         self.osocket.bind('tcp://*:%s' % self.output_port)
         self.poller = zmq.Poller()
         self.poller.register(self.isocket, zmq.POLLIN)
+
+    def _react(self):
+        self.logger.info('Generating reaction(s)')
+        actions = self.policy.choose_action(self.state.belief)
+        self.logger.debug(actions)
+        for a in actions:
+            self.state.change_state(a)
+            response = self.nlg.action2lang(a)
+            if response is None:
+                self.logger.debug('Action %s does not triggered response to user' % a)
+            else:
+                self.logger.debug('Action %s triggered response %s' % (a, response))
+                self.send_utt(response)
 
     def run(self):
         self._after_fork_init()
@@ -111,21 +122,16 @@ class ChatBot(multiprocessing.Process):
                     self.logger.error('user is not in msg: skipping message')
                     continue
                 if msg['user'].startswith('human'):
-                    self.logger.info('chatbot received message from human\n%s' % msg)
-                    anotation = self.parse_to_kb(msg['utterance'], self.kb)
-                    self.state = self.update_state(msg, anotation) 
-                    action = self.decide_action(self.state)
-                    response = self.generate_utt(action, self.kb)
+                    self.logger.info('Chatbot received message from human\n%s' % msg)
+                    annotation = self.parse_to_kb(msg['utterance'], self.kb)
+                    self.state.update_state(msg, annotation)
+                    self._react()
                 elif msg['user'].startswith('state'):
-                    self.logger.info('chatbot received message from state changer\n%s' % msg)
-                    self.state = self.kick_state(msg) 
-                    action = self.decide_action(self.state)
-                    response = self.generate_utt(action, self.kb)
+                    self.logger.info('Chatbot received message from state changer\n%s' % msg)
+                    self.state = self.update_state(msg)
+                    self._react()
                 else:
                     self.logger.error('Unrecognized user type')
-                self.logger.debug('Response: %s' % str(response))
-                if response is not None:
-                    self.send_utt(response)
 
     def send_utt(self, utt):
         msg = {
