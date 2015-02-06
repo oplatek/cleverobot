@@ -1,4 +1,4 @@
 pyzmq
 nltk
-# numpy
+numpy
 nose

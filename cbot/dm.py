@@ -39,6 +39,7 @@ class State(object):
     def change_state(self, action):
         timestamp = datetime.datetime.now()
         if action['type'] == 'greeting':
+            self.logger.debug('after action greeting changing state to elisa')
             self.belief['phase'] = 'elisa'
         self.belief['history'].append(('action', timestamp, action))
 
@@ -74,7 +75,8 @@ class Policy(object):
             for t in history[::-1]:
                 if t[0] == 'mention':
                     user_id, timestamp, w, tags = t[1:]
-                    if datetime.datetime.utcnow() - timestamp < self.timeout:
+                    print timestamp
+                    if datetime.datetime.utcnow() - datetime.datetime.fromtimestamp(timestamp) < self.timeout:
                         actions.append({'type':'ask','about': (w, None, None), 'context': {'tags': tags}})
         if phase == 'asking':
             "Pursue your own goal: get knowledge about something"

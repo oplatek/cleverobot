@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # encoding: utf-8
+import time
 from flask import Flask, render_template
 from flask.ext.socketio import SocketIO, emit, session
 import os
@@ -56,6 +57,7 @@ def begin_dialog(msg):
 def process_utt(msg):
     if 'chatbot' in session:
         try:
+            msg['time'] = time.time()
             session['chatbot'].send(msg)
             app.logger.debug('Message resent to Chatbot %s' % msg)
         except BotSendException as e:  # TODO more specific error handling

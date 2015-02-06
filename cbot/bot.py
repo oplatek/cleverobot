@@ -3,7 +3,7 @@
 # from __future__ import unicode_literals
 import multiprocessing
 import zmq.green as zmq
-import datetime
+import time
 import logging
 from gevent import Greenlet
 import dm
@@ -135,7 +135,7 @@ class ChatBot(multiprocessing.Process):
 
     def send_utt(self, utt):
         msg = {
-            'time': str(datetime.datetime.utcnow()),
+            'time': time.time(),
             'user': self.__class__.__name__,
             'utterance': utt,
             }

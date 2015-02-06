@@ -36,15 +36,14 @@ class Nlg(object):
         elif about[0] is not None and about[1] is not None and about[2] is None:
             question = 'Tell me more about %s having %s ?' % (about[0], about[1])
         else:
-            question = 'Really'
+            question = 'Really?'
         self.logger.debug('For action %s generated question %s' % (action, question))
         return question
 
     def confirm(self, action):
         about = action['about']
-        assert isinstance(about, tuple) and len(about) == 3, 'we model triplets only'
+        assert isinstance(about, tuple) and len(about) == 3, 'We model triplets only.'
         assertion = None
-        assert isinstance(about, tuple) and len(about) == 3, 'we model triplets only'
         if about[1] is not None and about[1] is None and about[2] is None:
             assertion = 'Do you mean %s?' % about[1]
         elif about[0] is None and about[1] is not None and about[2] is None:

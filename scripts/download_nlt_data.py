@@ -21,4 +21,4 @@ def download_nltkdata(path):
 
 
 if __name__ == '__main__':
-    download_nltkdata(os.sep.join([os.environ['HOME'], 'nlt_data']))
+    download_nltkdata(os.environ['NLTK_DATA'])

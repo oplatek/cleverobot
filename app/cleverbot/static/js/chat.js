@@ -15,7 +15,8 @@ $(document).ready(function() {
         var utt_sended = $('#messages li').length;
         var $m = $('#m');
         var $messages = $('#messages');
-        var msg = {'time': 'none', 'user':'human', 'utterance': $m.val()};
+        var since_epoch = new Date().getTime();
+        var msg = {'time_sent': since_epoch, 'user':'human', 'utterance': $m.val()};
         console.log('Sending utterance[' + utt_sended +']: ' + msg)
         if(utt_sended == 0) {
             console.log('Beginning websocket connection')
