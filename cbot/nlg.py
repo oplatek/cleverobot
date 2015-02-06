@@ -29,8 +29,8 @@ class Nlg(object):
         about = action['about']
         question = None
         assert isinstance(about, tuple) and len(about) == 3, 'we model triplets only'
-        if about[1] is not None and about[1] is None and about[2] is None:
-            question = 'Can you tell me more about %s ?' % about[1]
+        if about[0] is not None and about[1] is None and about[2] is None:
+            question = 'Can you tell me more about %s ?' % about[0]
         elif about[0] is None and about[1] is not None and about[2] is None:
             question = 'What kind of action is %s ?' % about[1]
         elif about[0] is not None and about[1] is not None and about[2] is None:

@@ -2,7 +2,7 @@
 # encoding: utf-8
 import time
 from flask import Flask, render_template
-from flask.ext.socketio import SocketIO, emit, session
+from flask.ext.socketio import SocketIO, session #, emit
 import os
 import zmq.green as zmq
 import argparse
@@ -59,7 +59,6 @@ def process_utt(msg):
         try:
             msg['time'] = time.time()
             session['chatbot'].send(msg)
-            app.logger.debug('Message resent to Chatbot %s' % msg)
         except BotSendException as e:  # TODO more specific error handling
             err_msg = {'status': 'error', 'message': 'Chatbot lost'}
             emit('server_error', err_msg)
@@ -100,7 +99,6 @@ if __name__ == '__main__':
     parser.add_argument('--bot-output',default='7777')
     args = parser.parse_args()
     
-    print 'args: %s' % args
 
     cbot_input = args.bot_input
     cbot_output = args.bot_output
@@ -113,5 +111,6 @@ if __name__ == '__main__':
 
     app.logger.addHandler(file_handler)
     app.config['DEBUG'] = args.debug
+    app.logger.info('args: %s' % args)
 
     socketio.run(app, host=args.host, port=args.port)

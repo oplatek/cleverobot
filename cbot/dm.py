@@ -32,7 +32,7 @@ class State(object):
             for w in greeting_words:
                 self.belief['history'].append((user_id, timestamp, w))
         for w, t in tags:
-            if 'NN' in t:  # FIXME check if it is noun more clearly
+            if 'NN' == t:  # FIXME check if it is noun more clearly
                 self.belief['history'].append(('mention', user_id, timestamp, w, t))
         self._validate_state()
 
@@ -70,15 +70,17 @@ class Policy(object):
         if phase == 'greeting':
             actions.append({'type':'greeting'})
             self.logger.info('Choose greeting action')
-        if phase == 'elisa':
+        elif phase == 'elisa':
             history = state['history']
             for t in history[::-1]:
                 if t[0] == 'mention':
                     user_id, timestamp, w, tags = t[1:]
-                    print timestamp
                     if datetime.datetime.utcnow() - datetime.datetime.fromtimestamp(timestamp) < self.timeout:
                         actions.append({'type':'ask','about': (w, None, None), 'context': {'tags': tags}})
-        if phase == 'asking':
+                        break  # FIXME choose only first action -> some smarter way of choosing actions
+        elif phase == 'asking':
             "Pursue your own goal: get knowledge about something"
             actions.append({'type': 'confirm', 'about': ('California', 'IsCapital', None)})
+        else:
+            self.logger.error('Unknow phase type')
         return actions
