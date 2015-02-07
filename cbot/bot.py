@@ -43,7 +43,7 @@ class ChatBotConnector(Greenlet):
 
 
     def send(self, msg):
-        self.logger.info('Sending msg to Chatbot: "%s"\n' % msg)
+        self.logger.info('Sending msg to Chatbot: "%s"\n', msg)
         self.iresender.send_json(msg)
 
     def _run(self):
@@ -54,6 +54,7 @@ class ChatBotConnector(Greenlet):
                 self.response(msg)
 
     def finalize(self, msg):
+        self.logger.info('Finalizing. Message %s', msg)
         self.should_run = False
 
 
@@ -104,9 +105,9 @@ class ChatBot(multiprocessing.Process):
             self.state.change_state(a)
             response = self.nlg.action2lang(a)
             if response is None:
-                self.logger.debug('Action %s does not triggered response to user' % a)
+                self.logger.debug('Action %s does not triggered response to user', a)
             else:
-                self.logger.debug('Action %s triggered response %s' % (a, response))
+                self.logger.debug('Action %s triggered response %s', a, response)
                 self.send_utt(response)
 
     def run(self):
@@ -115,14 +116,13 @@ class ChatBot(multiprocessing.Process):
         while self.should_run():
             socks = dict(self.poller.poll())
             if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
-                response = None
                 msg = self.isocket.recv_json()
                 # TODO use json validation
                 if 'user' not in msg or 'utterance' not in msg:
                     self.logger.error('user is not in msg: skipping message')
                     continue
                 if msg['user'].startswith('human'):
-                    self.logger.info('Chatbot received message from human\n%s' % msg)
+                    self.logger.info('Chatbot received message from human\n%s', msg)
                     annotation = self.parse_to_kb(msg['utterance'], self.kb)
                     self.state.update_state(msg, annotation)
                     self._react()
@@ -139,5 +139,5 @@ class ChatBot(multiprocessing.Process):
             'user': self.__class__.__name__,
             'utterance': utt,
             }
-        self.logger.info('Chatbot generated reply\n%s' % msg)
+        self.logger.info('Chatbot generated reply\n%s', msg)
         self.osocket.send_json(msg)

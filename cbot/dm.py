@@ -53,7 +53,7 @@ class State(object):
                     phase = 'elisa'
                 else:
                     phase = 'asking'
-                self.logger.info('Changing from %s to %s' % (self.belief['phase'], phase))
+                self.logger.info('Changing from %s to %s', self.belief['phase'], phase)
             self.belief['phase'] = phase
 
 
@@ -89,11 +89,11 @@ class Policy(object):
                 if t[0] == 'mention':
                     user_id, timestamp, w, tags = t[1:]
                     if datetime.datetime.utcnow() - datetime.datetime.fromtimestamp(timestamp) < self.reply_timeout:
-                        actions.append({'type':'ask','about': (w, None, None), 'context': {'tags': tags}})
+                        actions.append({'type':'ask','about': (w, None, None), 'context': {'tags': tags, 'user': user_id}})
                         break  # FIXME choose only first action -> some smarter way of choosing actions
         elif phase == 'asking':
-            "Pursue your own goal: get knowledge about something"
+            self.logger.debug("Pursue your own goal: get knowledge about something")
             actions.append({'type': 'confirm', 'about': ('California', 'IsCapital', None)})
         else:
-            self.logger.error('Unknow phase type')
+            self.logger.error('Unknown phase type')
         return actions

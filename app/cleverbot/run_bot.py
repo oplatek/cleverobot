@@ -1,7 +1,6 @@
 import argparse
 import signal
 from cbot.bot import ChatBot
-from cbot.bot_exceptions import *
 
 
 def quit_gracefully(*args):
