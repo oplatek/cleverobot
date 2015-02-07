@@ -1,19 +1,22 @@
+SHELL=/bin/bash
 PORT=3000
 DEBUG='--no-debug'  # [--no-debug|--debug]
 # DATA_VOLUMES=${CURDIR} # TODO and copy out logs and recorded dialogues
 VOLUMES=-v ${CURDIR}:/opt/cleverobot
 
 
-
 all: build
 
-
-
-build:
+#### Docker support####
+docker-build:
 	docker build -t oplatek/cleverobot .
 
-pull:
-	docker pull docker pull oplatek/cleverobot
+docker-pull:
+	docker pull oplatek/cleverobot
+
+# docker-stop:  # DOES NOT WORK FIXME, but does not needed really, so far the end is graceful
+# 	docker kill oplatek/cleverobot
+# 	docker rm oplatek/cleverobot
 
 
 nltk_data:
