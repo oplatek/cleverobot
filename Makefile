@@ -25,13 +25,20 @@ RUN_BOT=export NLTK_DATA=`pwd`/nltk_data; export PYTHONPATH=`pwd`:$$PYTHONPATH; 
 
 run: nltk_data
 	export ADDRESS=127.0.0.1; $(RUN_BOT)
-run_docker: nltk_data
+docker-run: nltk_data
 	docker run $(VOLUMES) -e ADDRESS=0.0.0.0 -p $(PORT):$(PORT) -i -t --rm oplatek/cleverobot /bin/bash -c '$(RUN_BOT)'
 
 #### tests ####
-TEST_BOT='export PYTHONPATH=cbot:$$PYTHONPATH; nosetests -e test_factory app/cleverbot/; nosetests -e test_factory cbot'
-test: unit-test
-integration-test:
-	echo 'TODO integration tests'
+UNIT_TEST=export NLTK_DATA=`pwd`/nltk_data; export PYTHONPATH=cbot:$$PYTHONPATH; nosetests -e test_factory app/cleverbot/; nosetests -e test_factory cbot
+INTEGRATION_TEST=echo 'TODO integration tests'
+
+test: unit-test integration-test
 unit-test:
-	docker run $(VOLUMES) -i -t --rm oplatek/cleverobot /bin/bash -c '$(TEST_BOT)'
+	$(UNIT_TEST)
+integration-test:
+	$(INTEGRATION_TEST)
+docker-test: docker-unit-test docker-integration-test
+docker-integration-test:
+	docker run $(VOLUMES) -i -t --rm oplatek/cleverobot /bin/bash -c '$(INTEGRATION_TEST)'
+docker-unit-test:
+	docker run $(VOLUMES) -i -t --rm oplatek/cleverobot /bin/bash -c '$(UNIT_TEST)'

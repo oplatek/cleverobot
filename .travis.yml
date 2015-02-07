@@ -1,5 +1,8 @@
 language: python
 
+env:
+    - NLTK_DATA=$HOME/nltk_data
+
 python:
     - "2.7"
     - "3.4"
