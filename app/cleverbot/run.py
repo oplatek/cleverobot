@@ -42,11 +42,11 @@ def begin_dialog(msg):
         app.logger.debug('ChatbotConnector initiated')
     except botex.BotNotAvailableException as e:  # TODO more specific error handling
         err_msg = {'status': 'error', 'message': 'Chatbot not available'}
-        fsocketio.emit('server_error', err_msg)
+        socketio.emit('server_error', err_msg)
         app.logger.error('Error: %s\nInput config %s\nSent to client %s', e,  msg, err_msg)
     except botex.BotSendException as e:
         err_msg = {'status': 'error', 'message': 'Chatbot cannot send messages'}
-        fsocketio.emit('server_error', err_msg)
+        socketio.emit('server_error', err_msg)
         app.logger.error('Error: %s\nSent to client %s', e, err_msg)
         del fsocketio.session['chatbot']
 
@@ -59,12 +59,12 @@ def process_utt(msg):
             fsocketio.session['chatbot'].send(msg)
         except botex.BotSendException as e:  # TODO more specific error handling
             err_msg = {'status': 'error', 'message': 'Chatbot lost'}
-            fsocketio.emit('server_error', err_msg)
+            socketio.emit('server_error', err_msg)
             app.logger.error('Error: %s\nInput config %s\nSent to client %s', e,  msg, err_msg)
             del fsocketio.session['chatbot']
     else:
         err_msg = {'status': 'error', 'message': 'Internal server error'}
-        fsocketio.emit('server_error', err_msg)
+        socketio.emit('server_error', err_msg)
         app.logger.error('Chatbot not found. Incoming input %s\nSent to client %s', msg, err_msg)
         return
 
@@ -80,7 +80,7 @@ def end_recognition(msg):
 
 
 def web_response(msg):
-    fsocketio.emit('socketbot', msg)
+    socketio.emit('socketbot', msg)
     app.logger.debug('sent: %s', msg)
 
 

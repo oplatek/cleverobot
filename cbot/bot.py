@@ -6,6 +6,7 @@ import zmq.green as zmq
 import time
 import logging
 from gevent import Greenlet
+import uuid
 import dm
 import kb
 import sys
@@ -32,6 +33,7 @@ class ChatBotConnector(Greenlet):
         self.oresender.connect('tcp://localhost:%s' % output_port)
         self.poller = zmq.Poller()
         self.poller.register(self.oresender, zmq.POLLIN)
+        self.id = uuid.uuid4()
 
         if logger is None:
             self.logger = get_chatbot_logger()
