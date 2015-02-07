@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import datetime
+from random import random
 
 import cbot.bot
 
@@ -38,16 +39,28 @@ class State(object):
 
     def change_state(self, action):
         timestamp = datetime.datetime.now()
+
         if action['type'] == 'greeting':
             self.logger.debug('after action greeting changing state to elisa')
             self.belief['phase'] = 'elisa'
         self.belief['history'].append(('action', timestamp, action))
 
+        phase = self.belief['phase']
+        if phase == 'asking' or phase =='elisa':
+            change = random()
+            if change < 0.3:
+                if phase == 'asking':
+                    phase = 'elisa'
+                else:
+                    phase = 'asking'
+                self.logger.info('Changing from %s to %s' % (self.belief['phase'], phase))
+            self.belief['phase'] = phase
+
 
 class Policy(object):
     def __init__(self, logger=None):
         self.model = None
-        self.timeout = datetime.timedelta(days=0, seconds=20)
+        self.reply_timeout = datetime.timedelta(days=0, seconds=2)
         if logger is None:
             self.logger = cbot.bot.get_chatbot_logger()
         else:
@@ -75,7 +88,7 @@ class Policy(object):
             for t in history[::-1]:
                 if t[0] == 'mention':
                     user_id, timestamp, w, tags = t[1:]
-                    if datetime.datetime.utcnow() - datetime.datetime.fromtimestamp(timestamp) < self.timeout:
+                    if datetime.datetime.utcnow() - datetime.datetime.fromtimestamp(timestamp) < self.reply_timeout:
                         actions.append({'type':'ask','about': (w, None, None), 'context': {'tags': tags}})
                         break  # FIXME choose only first action -> some smarter way of choosing actions
         elif phase == 'asking':

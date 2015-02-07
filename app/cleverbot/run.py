@@ -2,7 +2,7 @@
 # encoding: utf-8
 import time
 from flask import Flask, render_template
-from flask.ext.socketio import SocketIO, session #, emit
+from flask.ext.socketio import SocketIO, session, emit
 import os
 import zmq.green as zmq
 import argparse
