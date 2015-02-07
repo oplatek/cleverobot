@@ -5,7 +5,7 @@ env:
 
 python:
     - "2.7"
-    - "3.4"
+    - "3.4"  # gevent is failing for 3.4 todo identify all dependencies
 
 install:
     - pip install -r bot-requirements.txt -r app-requirements.txt
