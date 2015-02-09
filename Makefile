@@ -45,3 +45,13 @@ docker-integration-test:
 	docker run $(VOLUMES) -i -t --rm oplatek/cleverobot /bin/bash -c '$(INTEGRATION_TEST)'
 docker-unit-test:
 	docker run $(VOLUMES) -i -t --rm oplatek/cleverobot /bin/bash -c '$(UNIT_TEST)'
+
+# TODO probably will fail if lot of logs stored (bash expansion will fail)
+get-production-logs:
+	scp root@147.251.253.222:/var/cache/openafs/code/cleverobot/cbot/logs/*.log .
+
+production-logs2ufal:
+	scp root@147.251.253.222:/var/cache/openafs/code/cleverobot/cbot/logs/*.log oplatek@shrek.ms.mff.cuni.cz:/net/projects/vystadial/data/chat/
+
+logs2ufal:
+	scp cbot/logs/*.log oplatek@shrek.ms.mff.cuni.cz:/net/projects/vystadial/data/chat/
