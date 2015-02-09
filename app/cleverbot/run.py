@@ -12,6 +12,7 @@ app = Flask(__name__)
 app.secret_key = 12345  # TODO
 socketio = fsocketio.SocketIO(app)
 
+
 @app.route('/index')
 @app.route('/')
 def index():
@@ -22,28 +23,27 @@ def index():
 @app.errorhandler(404)
 def page_not_found(e):
     app.logger.error('Page not found 404: %s' % e)
-    return render_template("error.html",error='404', msg=e), 404
+    return render_template("error.html", error='404', msg=e), 404
 
 
 @app.errorhandler(500)
 def internal_server_err(e):
     app.logger.error('Internal server error 500: %s', e)
-    return render_template("error.html",error='500', msg=e), 500
+    return render_template("error.html", error='500', msg=e), 500
 
 
 @socketio.on('begin')
 def begin_dialog(msg):
     try:
         fsocketio.session['chatbot'] = ChatBotConnector(web_response,
-                                                cbot_input,
-                                                cbot_output,
-                                                )
+                                                        cbot_input,
+                                                        cbot_output,)
         fsocketio.session['chatbot'].start()
         app.logger.debug('ChatbotConnector initiated')
     except botex.BotNotAvailableException as e:  # TODO more specific error handling
         err_msg = {'status': 'error', 'message': 'Chatbot not available'}
         socketio.emit('server_error', err_msg)
-        app.logger.error('Error: %s\nInput config %s\nSent to client %s', e,  msg, err_msg)
+        app.logger.error('Error: %s\nInput config %s\nSent to client %s', e, msg, err_msg)
     except botex.BotSendException as e:
         err_msg = {'status': 'error', 'message': 'Chatbot cannot send messages'}
         socketio.emit('server_error', err_msg)
@@ -60,7 +60,7 @@ def process_utt(msg):
         except botex.BotSendException as e:  # TODO more specific error handling
             err_msg = {'status': 'error', 'message': 'Chatbot lost'}
             socketio.emit('server_error', err_msg)
-            app.logger.error('Error: %s\nInput config %s\nSent to client %s', e,  msg, err_msg)
+            app.logger.error('Error: %s\nInput config %s\nSent to client %s', e, msg, err_msg)
             del fsocketio.session['chatbot']
     else:
         err_msg = {'status': 'error', 'message': 'Internal server error'}
@@ -92,14 +92,13 @@ if __name__ == '__main__':
     parser.add_argument('--no-debug', dest='debug', action='store_false')
     parser.set_defaults(debug=True)
     parser.add_argument('-l', '--log', default='cleverbot.log')
-    parser.add_argument('--bot-input',default='6666')
-    parser.add_argument('--bot-output',default='7777')
+    parser.add_argument('--bot-input', default='6666')
+    parser.add_argument('--bot-output', default='7777')
     args = parser.parse_args()
-    
 
     cbot_input = args.bot_input
     cbot_output = args.bot_output
-    assert(cbot_output != cbot_input)
+    assert (cbot_output != cbot_input)
 
     file_handler = logging.FileHandler(args.log, encoding='utf8')
     file_handler.setFormatter(logging.Formatter(
@@ -107,6 +106,7 @@ if __name__ == '__main__':
     file_handler.setLevel(logging.DEBUG)
 
     app.logger.addHandler(file_handler)
+    app.logger
     app.config['DEBUG'] = args.debug
     app.logger.info('args: %s', args)
 

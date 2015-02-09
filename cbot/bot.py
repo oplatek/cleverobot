@@ -2,6 +2,8 @@
 # encoding: utf-8
 # from __future__ import unicode_literals
 import multiprocessing
+import os
+import errno
 import zmq.green as zmq
 import time
 import logging
@@ -26,6 +28,7 @@ class ChatBotConnector(Greenlet):
     def __init__(self, response_cb, input_port, output_port, logger=None):
         super(ChatBotConnector, self).__init__()
 
+        print 'ONDRA DEBUG'
         self.context = zmq.Context()
         self.iresender = self.context.socket(zmq.PUSH)
         self.oresender = self.context.socket(zmq.PULL)
@@ -35,17 +38,32 @@ class ChatBotConnector(Greenlet):
         self.poller.register(self.oresender, zmq.POLLIN)
         self.id = uuid.uuid4()
 
-        if logger is None:
-            self.logger = get_chatbot_logger()
-        else:
-            self.logger = logger
+        # if logger is None:
+        dirname = os.path.dirname(os.path.abspath(__file__))
+        logger = logging.getLogger(__name__)
+        logdir = os.path.join(dirname, 'logs')
+        try:
+            os.mkdir(logdir)
+        except OSError, e:
+            if e.errno != errno.EEXIST:
+                raise
+        name = '%d_%d.log' % (time.time(), self.id)
+        logger.setLevel(logging.DEBUG)
+        ch = logging.FileHandler(os.path.join(logdir, name), mode='w')
+        logger.addHandler(ch)
+        # ch = logging.StreamHandler(sys.stdout)
+        # logger.addHandler(ch)
+        logger.info('test')
+        self.logger = logger
 
         self.response = response_cb
-        self.should_run = True # change is based on the messages
-
+        self.should_run = True  # change is based on the messages
 
     def send(self, msg):
-        self.logger.info('Sending msg to Chatbot: "%s"\n', msg)
+        if 'user' not in msg or msg['user'] != 'human':
+            self.logger.error('Cannot communicate malformed message')
+        msg['id'] = str(self.id)
+        self.logger.info(msg)
         self.iresender.send_json(msg)
 
     def _run(self):
@@ -54,9 +72,9 @@ class ChatBotConnector(Greenlet):
             if self.oresender in socks and socks[self.oresender] == zmq.POLLIN:
                 msg = self.oresender.recv_json()
                 self.response(msg)
+                self.logger.info(msg)
 
     def finalize(self, msg):
-        self.logger.info('Finalizing. Message %s', msg)
         self.should_run = False
 
 
