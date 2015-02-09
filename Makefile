@@ -48,10 +48,11 @@ docker-unit-test:
 
 # TODO probably will fail if lot of logs stored (bash expansion will fail)
 get-production-logs:
-	scp root@147.251.253.222:/var/cache/openafs/code/cleverobot/cbot/logs/*.log .
+	scp -C -p root@147.251.253.222:/var/cache/openafs/code/cleverobot/cbot/logs/*.log .
 
-production-logs2ufal:
-	scp root@147.251.253.222:/var/cache/openafs/code/cleverobot/cbot/logs/*.log oplatek@shrek.ms.mff.cuni.cz:/net/projects/vystadial/data/chat/
+# FIXME not working
+# production-logs2ufal:
+# 	scp -C root@147.251.253.222:/var/cache/openafs/code/cleverobot/cbot/logs/*.log oplatek@shrek.ms.mff.cuni.cz:/net/projects/vystadial/data/chat/
 
 logs2ufal:
-	scp cbot/logs/*.log oplatek@shrek.ms.mff.cuni.cz:/net/projects/vystadial/data/chat/
+	scp -C -p cbot/logs/*.log oplatek@shrek.ms.mff.cuni.cz:/net/projects/vystadial/data/chat/
