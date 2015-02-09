@@ -49,19 +49,14 @@ class ChatBotConnector(Greenlet):
                 raise
         name = '%d_%d.log' % (time.time(), self.id)
         logger.setLevel(logging.DEBUG)
-        ch = logging.FileHandler(os.path.join(logdir, name), mode='w')
+        ch = logging.FileHandler(os.path.join(logdir, name), mode='w', delay=True)
         logger.addHandler(ch)
-        # ch = logging.StreamHandler(sys.stdout)
-        # logger.addHandler(ch)
-        logger.info('test')
         self.logger = logger
 
         self.response = response_cb
         self.should_run = True  # change is based on the messages
 
     def send(self, msg):
-        if 'user' not in msg or msg['user'] != 'human':
-            self.logger.error('Cannot communicate malformed message')
         msg['id'] = str(self.id)
         self.logger.info(msg)
         self.iresender.send_json(msg)
