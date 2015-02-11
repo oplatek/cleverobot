@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 # encoding: utf-8
-
-# Required data files are:
-#   * maxent_treebank_pos_tagger" in Models
-import nltk
+from parsing import parse
 
 
 class KnowledgeBase(object):
@@ -25,14 +22,6 @@ class KnowledgeBase(object):
         self._facts.add(entB)
 
 
-def parse(utterance):
-    annotation = []
-    tokens = nltk.wordpunct_tokenize(utterance)
-    tags = nltk.pos_tag(tokens)
-    assert len(tags) == len(tokens)
-    return (tokens, tags) 
-
-
 def parse_to_kb(utterance, kb):
     ''' 
     TODO also use time and user specific information
@@ -40,8 +29,3 @@ def parse_to_kb(utterance, kb):
     tokens, tags = parse(utterance)
     annotation = (utterance, tokens, tags)
     return annotation
-
-
-def generate_utt(action, kb):
-    pass
-

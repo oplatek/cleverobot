@@ -1,0 +1,4 @@
+[submodule "pln_inco"]
+    path = scripts/dep_parse/pln_inco
+    url = git@github.com:oplatek/pln_inco.git
+    ignore = dirty
