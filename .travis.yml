@@ -9,8 +9,7 @@ python:
 
 install:
     - pip install -r bot-requirements.txt -r app-requirements.txt
-    - python ./scripts/download_nlt_data.py
-      ./scripts/download_nltk_data.py
+    - python ./scripts/download_nltk_data.py
 
 script:
     - make test
