@@ -50,8 +50,8 @@ def parse(utterance):
 def dependency_parse(utterance):
     '''
     DEPREL http://nlp.stanford.edu/software/dependencies_manual.pdf
-    rtype: DependencyGraph = 
-            =[{'ctag':TOP, etc}, {address:1, head:int, rel:str(DEPREL), tag:str(pos),word:str, ...}, ...] 
+    rtype: DependencyGraph =
+            =[{'ctag':TOP, etc}, {address:1, head:int, rel:str(DEPREL), tag:str(pos),word:str, ...}, ...]
     '''
     tags = parse(utterance)
     dep_graph = dep_parser.tagged_parse(tags)
@@ -114,10 +114,6 @@ def parsing_demo(utterance=None):
     if utterance is None:
         utterance = 'Hi how are you?'
     print dependency_parse(utterance)
-
-
-
-    
 
 
 if __name__ == '__main__':
