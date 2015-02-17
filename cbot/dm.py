@@ -18,6 +18,7 @@ class State(object):
 
         self.belief = {'phase': 'greeting', 'history': []}
         self._validate_state()
+        self._change_prob_t = 0.0
 
     def _validate_state(self):
         # TODO validate json schema of state
@@ -42,13 +43,13 @@ class State(object):
 
         if action['type'] == 'greeting':
             self.logger.debug('after action greeting changing state to elisa')
-            self.belief['phase'] = 'elisa'
+            self.belief['phase'] = 'asking'
         self.belief['history'].append(('action', timestamp, action))
 
         phase = self.belief['phase']
-        if phase == 'asking' or phase =='elisa':
+        if phase == 'asking' or phase == 'elisa':
             change = random()
-            if change < 0.3:
+            if change < self._change_prob_t:
                 if phase == 'asking':
                     phase = 'elisa'
                 else:

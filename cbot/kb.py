@@ -4,25 +4,49 @@
 # Required data files are:
 #   * maxent_treebank_pos_tagger" in Models
 import nltk
+import pickle
+from kb_data import data
+from collections import defaultdict
 
 
 class KnowledgeBase(object):
     def __init__(self):
-        self._facts = set([]) 
-        self._trip = {}  # set of triples (a, r, c)
-        self._rtrip = {}  # the same triples reverse (c, r, a)
+        self._facts = set([])
+        self._trip = defaultdict(set)  # set of triples (a, r, c)
+        self._rtrip = defaultdict(set)  # the same triples reverse (c, r, a)
+        # add basic data
 
     def get(self, arg1, arg2=None, arg3=None):
         pass
 
-    def add_fact(self, ent):
-        self._facts.add(ent)
-
     def add_triplet(self, entA, rel, entB):
-        self._trip[entA] = (entA, rel, entB)
-        self._rtrip[entB] = (entA, rel, entB)
+        self._trip[entA].add((entA, rel, entB))
+        self._rtrip[entB].add((entA, rel, entB))
         self._facts.add(entA)
         self._facts.add(entB)
+
+    def add_triplets(self, triplets):
+        for a, r, b in triplets:
+            self.add_triplet(a, r, b)
+
+    def extract_triples(self):
+        triples = set([])
+        for trips in self._trip.itervalues():
+            triples = triples | trips
+        return triples
+
+    def dump(self, file):
+        triples = self.extract_triples()
+        pickle.dump(triples, file)
+
+    def load(self,file):
+        while True:
+            try:
+                triples = pickle.load(file)
+            except EOFError:
+                break
+            else:
+                self.add_triplets(triples)
 
 
 def parse(utterance):
@@ -44,4 +68,3 @@ def parse_to_kb(utterance, kb):
 
 def generate_utt(action, kb):
     pass
-
