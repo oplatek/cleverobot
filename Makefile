@@ -20,7 +20,7 @@ docker-pull:
 
 
 nltk_data:
-	export NLTK_DATA=$(CURDIR)/nltk_data;  python scripts/download_nlt_data.py 
+	export NLTK_DATA=$(CURDIR)/nltk_data;  python scripts/download_nltk_data.py 
 	@echo 'Makefile does not check content of $@ only of exists'
 
 #### run ####
