@@ -1,2 +1,2 @@
 sparqlwrapper >= 1.6.4
-nltk
+git+https://github.com/nltk/nltk.git@7216fb5aac79153c14015a5a234d34c2327c3188
