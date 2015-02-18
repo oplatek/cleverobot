@@ -11,19 +11,25 @@ from collections import defaultdict
 
 class KnowledgeBase(object):
     def __init__(self):
-        self._facts = set([])
         self._trip = defaultdict(set)  # set of triples (a, r, c)
         self._rtrip = defaultdict(set)  # the same triples reverse (c, r, a)
         # add basic data
 
-    def get(self, arg1, arg2=None, arg3=None):
-        pass
+    def get_nodes(self):
+        return self._trip.keys()
+
+    def get_neighbours(self, node, rev=False):
+        """
+        :type rev: Boolean
+        """
+        if rev:
+            return self._rtrip[node]
+        else:
+            return self._trip[node]
 
     def add_triplet(self, entA, rel, entB):
         self._trip[entA].add((entA, rel, entB))
         self._rtrip[entB].add((entA, rel, entB))
-        self._facts.add(entA)
-        self._facts.add(entB)
 
     def add_triplets(self, triplets):
         for a, r, b in triplets:

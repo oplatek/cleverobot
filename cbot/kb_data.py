@@ -357,4 +357,4 @@ plays_rock = {
 ('Darlene Love', 'plays', 'rock'),
 }
 
-data = is_capital & is_city & is_country & ontology & plays_rock
+data = is_capital | is_city | is_country | ontology | plays_rock

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import datetime
-from random import random
+import random
 
 import cbot.bot
 
@@ -42,13 +42,13 @@ class State(object):
         timestamp = datetime.datetime.now()
 
         if action['type'] == 'greeting':
-            self.logger.debug('after action greeting changing state to elisa')
             self.belief['phase'] = 'asking'
+            self.logger.debug('after action greeting changing state to %s', self.belief['phase'])
         self.belief['history'].append(('action', timestamp, action))
 
         phase = self.belief['phase']
         if phase == 'asking' or phase == 'elisa':
-            change = random()
+            change = random.random()
             if change < self._change_prob_t:
                 if phase == 'asking':
                     phase = 'elisa'
@@ -70,7 +70,7 @@ class Policy(object):
     # def get_feedback(self, score, action_id):
     #     """It is probably more efficient split the training into another file """
 
-    def choose_action(self, state):
+    def choose_action(self, state, kb, nlg):
         """TODO work with time and implement simple model of needs and attention:
 
         Need is gradually increasing until its fulfilled and reset.
@@ -79,22 +79,40 @@ class Policy(object):
         Attention is highest just after sensing a stimulus and fades away.
         The stimuli must vary to keep attention.
         """
-        actions = []
         phase = state['phase']
         if phase == 'greeting':
-            actions.append({'type':'greeting'})
             self.logger.info('Choose greeting action')
+            return [{'type':'greeting'}]
         elif phase == 'elisa':
-            history = state['history']
-            for t in history[::-1]:
-                if t[0] == 'mention':
-                    user_id, timestamp, w, tags = t[1:]
-                    if datetime.datetime.utcnow() - datetime.datetime.fromtimestamp(timestamp) < self.reply_timeout:
-                        actions.append({'type':'ask','about': (w, None, None), 'context': {'tags': tags, 'user': user_id}})
-                        break  # FIXME choose only first action -> some smarter way of choosing actions
+            return self._elisa_actions(state)
         elif phase == 'asking':
-            self.logger.debug("Pursue your own goal: get knowledge about something")
-            actions.append({'type': 'confirm', 'about': ('California', 'IsCapital', None)})
+            return self._ask_actions(state, kb, nlg)
         else:
             self.logger.error('Unknown phase type')
+            return []
+
+    def _ask_actions(self, state, kb, nlg):
+        actions = []
+        self.logger.debug("Pursue your own goal: get knowledge about something")
+        # get fact to ask about FIXME interesting choice for user
+        nodes = kb.get_nodes()
+        rand_node = random.sample(nodes, 1)[0]
+        self.logger.debug('Sample node %s', rand_node)
+        rand_rel = random.sample(kb.get_neighbours(rand_node), 1)[0]
+        qs = ['ask', 'confirm']
+        for q in qs:
+            assert q in nlg.nlgf
+        action_type = random.sample(qs, 1)[0]
+        actions.append({'type': action_type, 'about': rand_rel})
+        return actions
+
+    def _elisa_actions(self, state):
+        actions = []
+        history = state['history']
+        for t in history[::-1]:
+            if t[0] == 'mention':
+                user_id, timestamp, w, tags = t[1:]
+                if datetime.datetime.utcnow() - datetime.datetime.fromtimestamp(timestamp) < self.reply_timeout:
+                    actions.append({'type':'ask','about': (w, None, None), 'context': {'tags': tags, 'user': user_id}})
+                    break  # FIXME choose only first action -> some smarter way of choosing actions
         return actions

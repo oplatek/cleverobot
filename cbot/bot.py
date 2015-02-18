@@ -116,7 +116,7 @@ class ChatBot(multiprocessing.Process):
 
     def _react(self):
         self.logger.info('Generating reaction(s)')
-        actions = self.policy.choose_action(self.state.belief)
+        actions = self.policy.choose_action(self.state.belief, self.kb, self.nlg)
         self.logger.debug(actions)
         for a in actions:
             self.state.change_state(a)

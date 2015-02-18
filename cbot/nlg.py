@@ -9,21 +9,21 @@ class Nlg(object):
             self.logger = bot.get_chatbot_logger()
         else:
             self.logger = logger
+        self.nlgf = {
+            'ask': self.open_questions,
+            'confirm': self.confirm,
+            'inform': self.inform,
+            'greeting': lambda action: 'Hi!',
+            'silence': lambda action: '...',
+        }
 
     def action2lang(self, action):
         type = action['type']
-        if type == 'ask':
-            return self.open_questions(action)
-        elif type == 'confirm':
-            return self.confirm(action)
-        elif type == 'inform':
-            return self.inform(action)
-        elif type == 'greeting':
-            return 'Hi!'
-        elif type == 'silence':
-            return ' ... '
+        if type in self.nlgf:
+            return self.nlgf[type](action)
         else:
             self.logger.error('Generated of natural language not supported for type %s', action)
+        return None
 
     def open_questions(self, action):
         about = action['about']
@@ -35,8 +35,10 @@ class Nlg(object):
             question = 'What kind of action is %s ?' % about[1]
         elif about[0] is not None and about[1] is not None and about[2] is None:
             question = 'Tell me more about %s having %s ?' % (about[0], about[1])
+        elif about[0] is not None and about[1] is not None and about[2] is not None:
+            question = 'Tell me more facts about %s %s %s ?' % about
         else:
-            question = 'Really?'
+            question = 'What about do you think right now?'
         self.logger.debug('For action %s generated question %s', action, question)
         return question
 
@@ -50,7 +52,11 @@ class Nlg(object):
             assertion = 'What kind of action is %s' % about[1]
         elif about[0] is not None and about[1] is not None and about[2] is None:
             assertion = 'Tell me more about %s having %s' % (about[0], about[1])
-        self.logger.debug('For action %s confirming by %s', action, assertion)
+        elif about[0] is not None and about[1] is not None and about[2] is not None:
+            assertion = 'Is it true that %s %s %s?' % about
+        else:
+            assertion = 'Really?'
+        self.logger.debug('For action %s confirming by %s?', action, assertion)
         return assertion
 
     def inform(self, action):
