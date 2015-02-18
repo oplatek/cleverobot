@@ -99,6 +99,8 @@ class Policy(object):
         rand_node = random.sample(nodes, 1)[0]
         self.logger.debug('Sample node %s', rand_node)
         rand_rel = random.sample(kb.get_neighbours(rand_node), 1)[0]
+        mask = [random.randrange(0,2) for _ in xrange(3)]
+        rand_rel = tuple([x if m == 0 else None for x, m in zip(rand_rel, mask)])
         qs = ['ask', 'confirm']
         for q in qs:
             assert q in nlg.nlgf

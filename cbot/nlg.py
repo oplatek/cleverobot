@@ -34,11 +34,11 @@ class Nlg(object):
         elif about[0] is None and about[1] is not None and about[2] is None:
             question = 'What kind of action is %s ?' % about[1]
         elif about[0] is not None and about[1] is not None and about[2] is None:
-            question = 'Tell me more about %s having %s ?' % (about[0], about[1])
+            question = indirect_object_q(about)
         elif about[0] is not None and about[1] is not None and about[2] is not None:
             question = 'Tell me more facts about %s %s %s ?' % about
         else:
-            question = 'What about do you think right now?'
+            question = 'What do you think right now?'
         self.logger.debug('For action %s generated question %s', action, question)
         return question
 
@@ -66,3 +66,12 @@ class Nlg(object):
         inform = ' '.join(about)
         self.logger.debug('For action %s informing by %s', inform)
         return inform
+
+def indirect_object_q(triple):
+    assert(isinstance(triple, tuple) and len(triple) == 3)
+    assert(triple[0] is not None and triple[1] is not None and triple[2] is None)
+    s, v, o = triple
+    # TODO detect preposition
+    prep = ''
+    # FIXME improve according types
+    return 'What %s does %s %s?' % (prep, s, v)
