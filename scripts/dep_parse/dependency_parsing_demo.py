@@ -49,7 +49,7 @@ def parse(utterance):
 
 def dependency_parse(utterance):
     '''
-    DEPREL http://nlp.stanford.edu/software/dependencies_manual.pdf
+    More abotu DEPREL tags: http://nlp.stanford.edu/software/dependencies_manual.pdf
     rtype: DependencyGraph =
             =[{'ctag':TOP, etc}, {address:1, head:int, rel:str(DEPREL), tag:str(pos),word:str, ...}, ...]
     '''
