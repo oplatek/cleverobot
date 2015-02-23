@@ -6,13 +6,15 @@ from __future__ import division
 from itertools import izip
 from nltk.parse.dependencygraph import DependencyGraph
 from nltk.parse.evaluate import DependencyEvaluator
-from nltk.parse.nonprojectivedependencyparser import ProbabilisticNonprojectiveParser
+from nltk.parse.nonprojectivedependencyparser import ProbabilisticNonprojectiveParser as Parser
+# from cbot.parsing import DepParser as Parser
 from nltk.parse.nonprojectivedependencyparser import NaiveBayesDependencyScorer
 from textblob_aptagger import PerceptronTagger
 import argparse
 import logging
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 parser = argparse.ArgumentParser('Training the dependency parsing')
 parser.add_argument('--train-file', default='universal-dependencies-1.0/en/en-ud-train-small.conllu')
 parser.add_argument('--dev-file', default='universal-dependencies-1.0/en/en-ud-test-small.conllu')
@@ -41,12 +43,13 @@ def save_graphs(filename, graphs):
         wp.write('\n'.join(conll_sentences))
 
 
-print('Loading conllu for training')
+logger.info('Loading conllu for training')
 train_graphs = load_graphs(train_file)
 
-print('Train POS')
+pos_train_graphs = train_graphs
+logger.info('Train POS')
 tagged_sentences = []
-for g in train_graphs:
+for g in pos_train_graphs:
     # k == 0 TOP artificial node
     sentence = sorted([(k, n['word'], n['tag']) for k, n in g.nodes.iteritems() if k != 0])
     ws = [w for (_, w, _) in sentence]
@@ -54,21 +57,18 @@ for g in train_graphs:
     tagged_sentences.append((ws, ts))
 tgr = PerceptronTagger(load=False)
 tgr.train(tagged_sentences)
-print('TODO save trained model e.g. by pickling')
-print('POS trained')
+logger.info('TODO save trained model e.g. by pickling')
+logger.info('POS trained')
 
-print('Train DepParse')
-npp = ProbabilisticNonprojectiveParser()
+logger.info('Train DepParse on %d sentences' % len(train_graphs))
+npp = Parser()
 npp.train(train_graphs, NaiveBayesDependencyScorer())
-print('TODO save trained model e.g. by pickling')
-print('DepParse trained')
+logger.info('TODO save trained model e.g. by pickling')
+logger.info('DepParse trained')
 
-print('Loading conllu for testing')
+logger.info('Loading conllu for testing')
 test_graphs_gold = load_graphs(test_file)
 test_sentences = []
-for g in test_graphs_gold:
-    # k == 0 TOP artificial node
-    sentence = sorted([(k, n['word']) for k, n in g.nodes.iteritems() if k != 0])
 for g in test_graphs_gold:
     # k == 0 TOP artificial node
     sentence = sorted([(k, n['word'], n['tag']) for k, n in g.nodes.iteritems() if k != 0])
@@ -76,23 +76,31 @@ for g in test_graphs_gold:
     ts = [t for (_, _, t) in sentence]
     test_sentences.append((ws, ts))
 
-print("Testing todo")
+logger.info("Testing todo")
 test_graphs_parsed = []
 test_graphs_gold_eval = []
 skipped = 0
 for (ws, ts), gg in izip(test_sentences, test_graphs_gold):
-    dg = npp.parse(ws, ts).next()
-    test_graphs_parsed.append(dg)
-    test_graphs_gold_eval.append(gg)
+    dgs = npp.parse(ws, ts)
+    for dg in dgs:
+        test_graphs_parsed.append(dg)
+        test_graphs_gold_eval.append(gg)
+        break  # FIXME take only the first tree
 
-print("Save decoded")
+logger.info("Save decoded")
 save_graphs(test_gold_portion_file, test_graphs_gold_eval)
 save_graphs(test_parsed_file, test_graphs_parsed)
 
+
+with open('test_gold.svg', 'w') as w:
+    w.write(test_graphs_gold_eval[0]._repr_svg_())
+with open('test.svg', 'w') as w:
+    w.write(test_graphs_parsed[0]._repr_svg_())
+
 lg = len(test_graphs_gold)
 parsed = lg - skipped
-print('Evaluating %d / %d (%0.2f %%) of sentences' % (parsed, lg, 100 * parsed / lg))
+logger.info('Evaluating %d / %d (%0.2f %%) of sentences' % (parsed, lg, 100 * parsed / lg))
 if parsed > 0:
     ev = DependencyEvaluator(test_graphs_gold_eval, test_graphs_parsed)
     las, uas = ev.eval()
-    print('Labeled attachment score (LAS): %s\nUnlabeled attachment score (UAS) %s\n' % (las, uas))
+    logger.info('Labeled attachment score (LAS): %s\nUnlabeled attachment score (UAS) %s\n' % (las, uas))
