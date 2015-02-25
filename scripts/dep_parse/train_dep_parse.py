@@ -15,7 +15,7 @@ h = logging.StreamHandler()
 logger.addHandler(h)
 logger.setLevel(logging.DEBUG)
 parser = argparse.ArgumentParser('Training the dependency parsing')
-parser.add_argument('--train-file', default='universal-dependencies-1.0/en/en-ud-train.conllu')
+parser.add_argument('--train-file', default='universal-dependencies-1.0/en/en-ud-train-small.conllu')
 parser.add_argument('--dev-file', default='universal-dependencies-1.0/en/en-ud-test-small.conllu')
 parser.add_argument('--test-file', default='universal-dependencies-1.0/en/en-ud-test.conllu')
 parser.add_argument('--test-parsed-file', default='test_parsed.conllu')
@@ -41,7 +41,7 @@ try:
     npp.train(sentences, nr_iter=15)
 except NonProjectiveException as e:
     non_projective += 1
-logger.info("Skipped non projective  %d sentences" % non_projective)
+logger.info("Skipped non %d non-projective sentences" % non_projective)
 npp.save()
 logger.info('DepParse trained')
 
@@ -73,4 +73,8 @@ logger.info('Evaluating %d / %d (%0.2f %%) of sentences' % (parsed, lg, 100 * pa
 if parsed > 0:
     ev = DependencyEvaluator(test_graphs_parsed, test_graphs_gold)
     uas, las = ev.eval()
-    logger.info('Labeled attachment score (LAS): %s\nUnlabeled attachment score (UAS) %s\n' % (las, uas))
+    pos_acc = ev.pos_accuracy()
+    logger.info('Labeled attachment score (LAS): %.03f\n'
+                'Unlabeled attachment score (UAS) %.03f\n'
+                'for POS accuracy %.03f\n' % (las, uas, pos_acc))
+

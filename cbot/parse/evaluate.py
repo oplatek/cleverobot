@@ -6,7 +6,8 @@
 # URL: <http://nltk.org/>
 # For license information, see LICENSE.TXT
 
-from __future__ import division
+from __future__ import division, unicode_literals
+from itertools import izip
 
 import unicodedata
 
@@ -34,6 +35,21 @@ class DependencyEvaluator(object):
         punc_cat = set(["Pc", "Pd", "Ps", "Pe", "Pi", "Pf", "Po"])
         return "".join(x for x in inStr if unicodedata.category(x) not in punc_cat)
 
+    def pos_accuracy(self):
+        total, corr = 0, 0
+
+        for parsed, gold in izip(self._parsed_sents, self._gold_sents):
+            assert len(parsed.nodes) == len(gold.nodes), "Sentences must have equal length."
+            for parsed_node_address, parsed_node in parsed.nodes.iteritems():
+                if parsed_node_address == 0:
+                    continue  # skipping the root node
+                gold_node = gold.nodes[parsed_node_address]
+                total += 1
+                if parsed_node['tag'] == gold_node['tag']:
+                    corr += 1
+
+        return corr / total
+
     def eval(self):
         """
         Return the Labeled Attachment Score (LAS) and Unlabeled Attachment Score (UAS)
@@ -43,19 +59,13 @@ class DependencyEvaluator(object):
         if (len(self._parsed_sents) != len(self._gold_sents)):
             raise ValueError(" Number of parsed sentence is different with number of gold sentence.")
 
-        corr = 0
-        corrL = 0
-        total = 0
+        corr, corrL, total = 0, 0, 0
 
-        for i in range(len(self._parsed_sents)):
-            parsed_sent_nodes = self._parsed_sents[i].nodes
-            gold_sent_nodes = self._gold_sents[i].nodes
+        for parsed, gold in izip(self._parsed_sents, self._gold_sents):
+            assert len(parsed.nodes) == len(gold.nodes), "Sentences must have equal length."
 
-            if (len(parsed_sent_nodes) != len(gold_sent_nodes)):
-                raise ValueError("Sentences must have equal length.")
-
-            for parsed_node_address, parsed_node in parsed_sent_nodes.items():
-                gold_node = gold_sent_nodes[parsed_node_address]
+            for parsed_node_address, parsed_node in parsed.nodes.iteritems():
+                gold_node = gold.nodes[parsed_node_address]
 
                 if parsed_node["word"] is None:
                     continue
