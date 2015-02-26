@@ -90,12 +90,21 @@ class DependencyGraph(object):
                 self.children[node.head].add(node.id)
         self.nodes[node.id] = node
 
+    def get_words_att(self, att, exclude_root=True):
+        if exclude_root:
+            nodes = self.nodes[1:]
+        else:
+            nodes = self.nodes
+        return [getattr(node, att) for node in nodes]
+
     def update_dependency(self, head, dep):
         """Updates new dependency arc to new head and new label.
         """
         assert 0 <= head < len(self.nodes)
         assert 0 <= dep < len(self.nodes)
-        self.children[self.nodes[dep].head].remove(dep)
+        dep_head = self.nodes[dep].head
+        if dep_head is not None:
+            self.children[self.nodes[dep].head].remove(dep)
         self.children[head].add(dep)
         new_dep_node = self.nodes[dep]._replace(head=head)
         self.nodes[dep] = new_dep_node
@@ -142,7 +151,7 @@ class DependencyGraph(object):
     def __repr__(self):
         return "<DependencyGraph with {0} nodes>".format(len(self.nodes))
 
-    def _parse(self, input_, cell_extractor=None, cell_separator=None, none_values=None):
+    def _parse(self, input_, cell_extractor=None, cell_separator=None):
         """Parse a sentence.
         Returns True for success
 
@@ -154,6 +163,7 @@ class DependencyGraph(object):
         none_values = {'_'}
 
         def extract_3_cells(cells, index):
+            cells = [c if c not in none_values or i == 0 else None for i, c in enumerate(cells)]
             form, tag, head = cells
             if head == 0:
                 rel = 'root'
@@ -162,11 +172,13 @@ class DependencyGraph(object):
             return Node(id=index, form=form, cpostag=tag, head=head, deprel=rel)
 
         def extract_4_cells(cells, index):
+            cells = [c if c not in none_values or i == 0 else None for i, c in enumerate(cells)]
             form, tag, head, rel = cells
             return Node(id=index, form=form, cpostag=tag, head=head, deprel=rel)
 
         def extract_10_cells(cells, index):
             # TODO extract deprel format and feats
+            cells = [c if (c not in none_values or i == 1) else None for i, c in enumerate(cells)]
             id, form, lemma, cpostag, tag, feats, head, deprel, deps, misc = cells
             result = Node(id, form, lemma, cpostag, tag, feats, head, deprel, deps, misc)
             assert result.id == index
@@ -196,10 +208,11 @@ class DependencyGraph(object):
         assert len(self.children) == len(lines) + 1
 
         for index, line in enumerate(lines, start=1):
-            cells = [c if c not in none_values else None for c in line.split(cell_separator)]
+            cells = [c for c in line.split(cell_separator)]
             assert cell_number == len(cells), '%d vs %d' % (cell_number, len(cells))
             try:
                 self.update_node(cell_extractor(cells, index))
+                assert self.nodes[index].form is not None, str(cells)
             except KeyError:
                 raise ValueError('Extraction not supported for tab-delimited fields %d and %s'
                                  % (cell_number, cell_extractor))
