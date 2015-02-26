@@ -51,7 +51,6 @@ test_graphs_gold = DependencyGraph.load(test_file)
 test_sentences = list(depgraph_to_pos(test_graphs_gold))
 test_graphs_parsed = []
 logger.info("Testing")
-skipped = 0  # FIXME delete if not used
 for ws, gold_tags in test_sentences:
     tags, heads = npp.parse(ws)
     dg = heads_to_depgraph(heads, tags, ws)
@@ -64,11 +63,13 @@ with open('test_gold.svg', 'w') as w:
     w.write(test_graphs_gold[0]._repr_svg_())
 with open('test.svg', 'w') as w:
     w.write(test_graphs_parsed[0]._repr_svg_())
+print 'gold', [(n.cpostag, n.form) for n in test_graphs_gold[0].nodes]
+print 'parsed', [(n.cpostag, n.form) for n in test_graphs_parsed[0].nodes]
 
-lg = len(test_graphs_gold)
-parsed = lg - skipped
-logger.info('Evaluating %d / %d (%0.2f %%) of sentences' % (parsed, lg, 100 * parsed / lg))
-if parsed > 0:
+gold_len = len(test_graphs_gold)
+parsed_len = gold_len  # TODO we suppose that parsing is robust and each sentence is parsed
+logger.info('Evaluating %d / %d (%0.2f %%) of sentences' % (parsed_len, gold_len, 100 * parsed_len / gold_len))
+if parsed_len > 0:
     ev = DependencyEvaluator(test_graphs_parsed, test_graphs_gold)
     uas, las = ev.eval()
     pos_acc = ev.pos_accuracy()
