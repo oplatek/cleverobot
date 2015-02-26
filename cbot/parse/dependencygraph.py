@@ -33,8 +33,7 @@ class Node(
     namedtuple('Node', ['id', 'form', 'lemma', 'cpostag', 'tag', 'feats', 'head', 'deprel', 'deps', 'misc',])):
     def __new__(cls, id, form=None, lemma=None, cpostag=None, tag=None, feats=None,
                 head=None, deprel=None, deps=None, misc=None):
-        if deps is None:
-            deps = {}
+        # FIXME parse featurures, deps
         if head is not None:
             head = int(head)
         return super(Node, cls).__new__(cls, int(id), form, lemma, cpostag, tag, feats, head, deprel, deps, misc)
@@ -59,7 +58,7 @@ class DependencyGraph(object):
     def save_conll(filename, graphs, columns=10):
         with open(filename, 'w') as wp:
             conll_sentences = [g.to_conll(columns) for g in graphs]
-            wp.write('\n'.join(conll_sentences))
+            wp.write('\n\n'.join(conll_sentences))
 
 
     def __init__(self, tree_str=None, n=None, cell_extractor=None, cell_separator=None):
@@ -214,19 +213,22 @@ class DependencyGraph(object):
             if n.head is not None:
                 self.children[n.head].add(n.id)
 
-    def to_conll(self, style):
+    def to_conll(self, style, empty_str='_'):
         if style == 3:
             template = '{form}\t{cpostag}\t{head}\n'
         elif style == 4:
             template = '{form}\t{cpostag}\t{head}\t{deprel}\n'
         elif style == 10:
-            template = '%{id}d\t{form}\t{lemma}\t{cpostag}\t{tag}\t{feats}\t{head}\t{deprel}\t{deps}\t{misc}'
+            template = '{id}\t{form}\t{lemma}\t{cpostag}\t{tag}\t{feats}\t{head}\t{deprel}\t{deps}\t{misc}'
         else:
             raise ValueError(
                 'Number of tab-delimited fields ({0}) not supported by '
                 'CoNLL(10) or Malt-Tab(4) format'.format(style)
             )
-        for n in self.nodes:
-            if n is None:
-                print('fail')
-        return '\n'.join(template.format(**node._asdict()) for node in self.nodes)
+        node_dicts = [n._asdict() for n in self.nodes if n.id != 0]
+        for n in node_dicts:
+            for k, v in n.iteritems():
+                if v is None:
+                    n[k] = empty_str
+
+        return '\n'.join(template.format(**n) for n in node_dicts)
