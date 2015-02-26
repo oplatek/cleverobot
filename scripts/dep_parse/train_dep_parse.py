@@ -15,7 +15,7 @@ h = logging.StreamHandler()
 logger.addHandler(h)
 logger.setLevel(logging.DEBUG)
 parser = argparse.ArgumentParser('Training the dependency parsing')
-parser.add_argument('--train-file', default='universal-dependencies-1.0/en/en-ud-train-small.conllu')
+parser.add_argument('--train-file', default='universal-dependencies-1.0/en/en-ud-train.conllu')
 parser.add_argument('--dev-file', default='universal-dependencies-1.0/en/en-ud-test-small.conllu')
 parser.add_argument('--test-file', default='universal-dependencies-1.0/en/en-ud-test.conllu')
 parser.add_argument('--test-parsed-file', default='test_parsed.conllu')
@@ -46,15 +46,13 @@ npp.save()
 logger.info('DepParse trained')
 
 logger.info('Loading conllu for testing')
-# test_graphs_gold = DependencyGraph.load(test_file)
-test_graphs_gold = train_graphs  # TODO evaulate on training data should be almost accurate
+test_graphs_gold = DependencyGraph.load(test_file)
+# test_graphs_gold = train_graphs  # TODO evaulate on training data should be almost accurate
 test_sentences = list(depgraph_to_pos(test_graphs_gold))
 test_graphs_parsed = []
 logger.info("Testing")
 skipped = 0  # FIXME delete if not used
 for ws, gold_tags in test_sentences:
-    if len(ws) == 2:
-        print 'Debug', len(test_graphs_parsed) + 1
     tags, heads = npp.parse(ws)
     dg = heads_to_depgraph(heads, tags, ws)
     test_graphs_parsed.append(dg)
@@ -77,4 +75,3 @@ if parsed > 0:
     logger.info('Labeled attachment score (LAS): %.03f\n'
                 'Unlabeled attachment score (UAS) %.03f\n'
                 'for POS accuracy %.03f\n' % (las, uas, pos_acc))
-

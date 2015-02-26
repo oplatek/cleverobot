@@ -7,7 +7,7 @@ from collections import defaultdict
 import random
 from cbot.parse.perceptron import Perceptron
 from cbot.parse.pos import PerceptronTagger, DefaultList
-from dependencygraph import DependencyGraph
+from dependencygraph import DependencyGraph, Node
 
 SHIFT = 0;
 RIGHT = 1;
@@ -304,30 +304,20 @@ def read_conll(loc):
 
 
 def depgraph_to_pos(dgs):
-    for g in dgs:
-        tags, words = [], []
-        for address, node in sorted(g.nodes.iteritems()):
-            if address == 0:
-                assert (node['word'] == None and node['tag'] == 'TOP')
-                continue
-            words.append(node['word'])
-            tags.append(node['tag'])
-        pad_tokens(words)
-        pad_tokens(tags)
-        yield words, tags
+    return ((words, tags) for words, tags, _, _ in depgraph_to_headlabels(dgs))
 
 
 def depgraph_to_headlabels(dgs):
     for g in dgs:
         tags, words, heads, labels = [], [], [None], [None]
-        for address, node in sorted(g.nodes.iteritems()):
-            if address == 0:
-                assert (node['word'] == None and node['tag'] == 'TOP')
+        for node in g.nodes:
+            if node.id == 0:
+                assert (node.form is None and node.cpostag == 'root')
                 continue
-            words.append(node['word'])
-            tags.append(node['tag'])
-            labels.append(node['rel'])
-            heads.append(node['head'])
+            words.append(node.form)
+            tags.append(node.cpostag)
+            labels.append(node.deprel)
+            heads.append(node.head)
         pad_tokens(words)
         pad_tokens(tags)
         yield words, tags, heads, labels
@@ -343,19 +333,10 @@ def heads_to_depgraph(heads, tags, words):
             continue
         else:
             assert (i != 0)
-            if words[h] == 'ROOT':
+            if words[h] == 'ROOT' or words[h] == 'root':
                 h = 0
-            g.nodes[i].update({'tag': t,
-                               'head': h,
-                               'address': i,
-                               'word': w,
-                               })
-
-    for n in g.nodes.values():
-        if n['head'] is not None:
-            g.add_arc(n['head'], n['address'])
-        elif n['address'] != 0:
-            print 'Graph not connected'
+            n = Node(id=i, form=w, head=h, cpostag=t)
+            g.add_node(n)
     return g
 
 

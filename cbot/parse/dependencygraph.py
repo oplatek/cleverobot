@@ -1,21 +1,26 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#
+# Ondrej Platek 2015 Apache 2.0 License
+# based on
 # Natural Language Toolkit: Dependency Grammars
 #
 # Copyright (C) 2001-2015 NLTK Project
 # Author: Jason Narad <jason.narad@gmail.com>
-#         Steven Bird <stevenbird1@gmail.com> (modifications)
+# Steven Bird <stevenbird1@gmail.com> (modifications)
 #
 # URL: <http://nltk.org/>
 # For license information, see LICENSE.TXT
-#
 
 """
 Tools for reading and writing dependency trees.
-The input is assumed to be in Malt-TAB format
-(http://stp.lingfil.uu.se/~nivre/research/MaltXML.html).
+Mainly:
+    http://universaldependencies.github.io/docs/format.html
+    http://stp.lingfil.uu.se/~nivre/research/MaltXML.html).
 """
 from __future__ import print_function, unicode_literals, division
 
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from pprint import pformat
 import subprocess
 
@@ -23,20 +28,35 @@ import subprocess
 class DependencyGraphError(Exception):
     pass
 
+
+class Node(
+    namedtuple('Node', ['id', 'form', 'lemma', 'cpostag', 'tag', 'feats', 'head', 'deprel', 'deps', 'misc',])):
+    def __new__(cls, id, form=None, lemma=None, cpostag=None, tag=None, feats=None,
+                head=None, deprel=None, deps=None, misc=None):
+        if deps is None:
+            deps = {}
+        if head is not None:
+            head = int(head)
+        return super(Node, cls).__new__(cls, int(id), form, lemma, cpostag, tag, feats, head, deprel, deps, misc)
+
+
 class DependencyGraph(object):
     """
     A container for the nodes and labelled edges of a dependency structure.
+
+    Node is inspired by
+    http://universaldependencies.github.io/docs/format.html
+
     """
 
     @staticmethod
-    def load(filename, zero_based=False, cell_separator=None):
+    def load(filename, cell_separator=None):
         with open(filename) as infile:
             return [
                 DependencyGraph(
                     tree_str,
-                    zero_based=zero_based,
                     cell_separator=cell_separator,
-                    )
+                )
                 for tree_str in infile.read().strip().split('\n\n')
             ]
 
@@ -47,71 +67,31 @@ class DependencyGraph(object):
             wp.write('\n'.join(conll_sentences))
 
 
-    @staticmethod
-    def get_default_node():
-        return {
-            'address': None,
-            'word': None,
-            'lemma': None,
-            'ctag': None,
-            'tag': None,
-            'feats': None,
-            'head': None,
-            'deps': defaultdict(list),
-            'rel': None,
-            }
-
-    def __init__(self, tree_str=None, cell_extractor=None, zero_based=False, cell_separator=None):
+    def __init__(self, tree_str=None, cell_extractor=None, cell_separator=None):
         """Dependency graph.
 
-        We place a dummy `TOP` node with the index 0, since the root node is
-        often assigned 0 as its head. This also means that the indexing of the
-        nodes corresponds directly to the Malt-TAB format, which starts at 1.
+        A dummy `ROOT` node has always the index 0,
+        and is the artificial root of the Dependency Graph representing a sentence.
 
-        If zero-based is True, then Malt-TAB-like input with node numbers
-        starting at 0 and the root node assigned -1 (as produced by, e.g.,
-        zpar).
+        For each node should hold nodes[i].id == i
         """
-        self.nodes = defaultdict(DependencyGraph.get_default_node)
-        self.nodes[0].update(
-            {
-                'ctag': 'TOP',
-                'tag': 'TOP',
-                'rel': 'ROOT',
-                'address': 0,
-            }
-        )
 
+        self.nodes = [Node(id=0, cpostag='root')]
         if tree_str:
-            self._parse(
-                tree_str,
-                cell_extractor=cell_extractor,
-                zero_based=zero_based,
-                cell_separator=cell_separator,
-            )
+            self._parse(tree_str, cell_extractor=cell_extractor, cell_separator=cell_separator, )
 
-    def add_arc(self, head_address, mod_address):
-        """
-        Adds an arc from the node specified by head_address to the
-        node specified by the mod address.
-        """
-        relation = self.nodes[mod_address]['rel']
-        self.nodes[head_address]['deps'].setdefault(relation, [])
-        self.nodes[head_address]['deps'][relation].append(mod_address)
+    def add_node(self, node):
+        assert isinstance(node, Node)
+        assert node.id == len(self.nodes), '%d vs %d' % (node.id, len(self.nodes))
+        self.nodes.append(node)
 
-
-    def connect_graph(self):
+    def update_dependency(self, head, dep):
+        """Updates new dependency arc to new head and new label.
         """
-        Fully connects all non-root nodes.  All nodes are set to be dependents
-        of the root node.
-        """
-        for node1 in self.nodes.values():
-            for node2 in self.nodes.values():
-                if node1['address'] != node2['address'] and node2['rel'] != 'TOP':
-                    relation = node2['rel']
-                    node1['deps'].setdefault(relation, [])
-                    node1['deps'][relation].append(node2['address'])
-                    #node1['deps'].append(node2['address'])
+        assert 0 <= head < len(self.nodes)
+        assert 0 <= dep < len(self.nodes)
+        new_dep_node = self.nodes[dep]._replace(head=head)
+        self.nodes[dep] = new_dep_node
 
     def to_dot(self):
         """
@@ -123,33 +103,30 @@ class DependencyGraph(object):
         s += 'edge [dir=forward]\n'
         s += 'node [shape=plaintext]\n'
         # Draw the remaining nodes
-        for address, node in sorted(self.nodes.iteritems()):
-            s += '\n%s [label="%s (%s)"]' % (address, address, node['word'])
-            dep_rel = []
-            for rel, deps in node['deps'].iteritems():
-                for dep in deps:
-                    dep_rel.append((dep, rel))
-            dep_rel.sort()
-            for dep, rel in dep_rel:
-                if rel != None:
-                    s += '\n%s -> %s [label="%s"]' % (node['address'], dep, rel)
+        for node in self.nodes:
+            s += '\n%s [label="%s (%s)"]' % (node.id, node.id, node.form)
+            dep_rel = sorted([(dep.id, dep.deprel) for dep in self.nodes if dep.head == node.id])
+            for dep_id, rel in dep_rel:
+                if rel is not None:
+                    s += '\n%s -> %s [label="%s"]' % (node.id, dep_id, rel)
                 else:
-                    s += '\n%s -> %s ' % (node['address'], dep)
+                    s += '\n%s -> %s ' % (node.id, dep_id)
         s += "\n}"
         return s
 
     def _repr_svg_(self):
         """Ipython magic: show SVG representation of the transducer"""
         dot_string = self.to_dot()
-        format = 'svg'
+        img_format = 'svg'
         try:
-            process = subprocess.Popen(['dot', '-T%s' % format], stdin=subprocess.PIPE,
+            process = subprocess.Popen(['dot', '-T%s' % img_format], stdin=subprocess.PIPE,
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except OSError:
             raise Exception('Cannot find the dot binary from Graphviz package')
         out, err = process.communicate(dot_string)
         if err:
-            raise Exception('Cannot create %s representation by running dot from string\n:%s' % (format, dot_string))
+            raise Exception(
+                'Cannot create %s representation by running dot from string\n:%s' % (img_format, dot_string))
         return out
 
     def __str__(self):
@@ -158,51 +135,34 @@ class DependencyGraph(object):
     def __repr__(self):
         return "<DependencyGraph with {0} nodes>".format(len(self.nodes))
 
-    def left_children(self, node_index):
-        """
-        Returns the number of left children under the node specified
-        by the given address.
-        """
-        children = self.nodes[node_index]['deps']
-        index = self.nodes[node_index]['address']
-        return sum(1 for c in children if c < index)
-
-    def right_children(self, node_index):
-        """
-        Returns the number of right children under the node specified
-        by the given address.
-        """
-        children = self.nodes[node_index]['deps']
-        index = self.nodes[node_index]['address']
-        return sum(1 for c in children if c > index)
-
-    def add_node(self, node):
-        if not self.contains_address(node['address']):
-            self.nodes[node['address']].update(node)
-
-    def _parse(self, input_, cell_extractor=None, zero_based=False, cell_separator=None):
+    def _parse(self, input_, cell_extractor=None, cell_separator=None):
         """Parse a sentence.
+        Returns True for success
 
-        :param extractor: a function that given a tuple of cells returns a
-        7-tuple, where the values are ``word, lemma, ctag, tag, feats, head,
-        rel``.
+        :param extractor: a function that given a tuple of cells returns a Node
 
         :param str cell_separator: the cell separator. If not provided, cells
         are split by whitespace.
-
         """
 
-        def extract_3_cells(cells):
-            word, tag, head = cells
-            return word, word, tag, tag, '', head, ''
+        def extract_3_cells(cells, index):
+            form, tag, head = cells
+            if head == 0:
+                rel = 'root'
+            else:
+                rel = None
+            return Node(id=index, form=form, cpostag=tag, head=head, deprel=rel)
 
-        def extract_4_cells(cells):
-            word, tag, head, rel = cells
-            return word, word, tag, tag, '', head, rel
+        def extract_4_cells(cells, index):
+            form, tag, head, rel = cells
+            return Node(id=index, form=form, cpostag=tag, head=head, deprel=rel)
 
-        def extract_10_cells(cells):
-            _, word, lemma, ctag, tag, feats, head, rel, _, _ = cells
-            return word, lemma, ctag, tag, feats, head, rel
+        def extract_10_cells(cells, index):
+            # TODO extract deprel format and feats
+            id, form, lemma, cpostag, tag, feats, head, deprel, deps, misc = cells
+            result = Node(id, form, lemma, cpostag, tag, feats, head, deprel, deps, misc)
+            assert result.id == index
+            return result
 
         extractors = {
             3: extract_3_cells,
@@ -214,105 +174,36 @@ class DependencyGraph(object):
             input_ = (line for line in input_.split('\n'))
 
         lines = (l.rstrip() for l in input_)
-        lines = (l for l in lines if l)
+        lines = [l for l in lines if l]
 
-        cell_number = None
+        if len(lines) > 0:
+            cell_number = len(lines[0].split(cell_separator))
+        else:
+            return False
+
+        if cell_extractor is None:
+            cell_extractor = extractors[cell_number]
+
         for index, line in enumerate(lines, start=1):
             cells = line.split(cell_separator)
-            if cell_number is None:
-                cell_number = len(cells)
-            else:
-                assert cell_number == len(cells)
-
-            if cell_extractor is None:
-                try:
-                    cell_extractor = extractors[cell_number]
-                except KeyError:
-                    raise ValueError(
-                        'Number of tab-delimited fields ({0}) not supported by '
-                        'CoNLL(10) or Malt-Tab(4) format'.format(cell_number)
-                    )
-
-            word, lemma, ctag, tag, feats, head, rel = cell_extractor(cells)
-            if rel == 'root':
-                rel = 'ROOT'
-
-            head = int(head)
-            if zero_based:
-                head += 1
-
-            self.nodes[index].update(
-                {
-                    'address': index,
-                    'word': word,
-                    'lemma': lemma,
-                    'ctag': ctag,
-                    'tag': tag,
-                    'feats': feats,
-                    'head': head,
-                    'rel': rel,
-                }
-            )
-
-            # Make sure that he fake root node has labeled dependencies.
-            if (cell_number == 3) and (head == 0):
-                rel = 'ROOT'
-            self.nodes[head]['deps'][rel].append(index)
-
-        if not self.nodes[0]['deps']['ROOT']:
-            raise DependencyGraphError(
-                "The graph does'n contain a node "
-                "that depends on the root element."
-            )
-        root_address = self.nodes[0]['deps']['ROOT'][0]
-
-    def contains_cycle(self):
-        distances = {}
-
-        for node in self.nodes.values():
-            for dep in node['deps']:
-                key = tuple([node['address'], dep])
-                distances[key] = 1
-
-        for _ in self.nodes:
-            new_entries = {}
-
-            for pair1 in distances:
-                for pair2 in distances:
-                    if pair1[1] == pair2[0]:
-                        key = tuple([pair1[0], pair2[1]])
-                        new_entries[key] = distances[pair1] + distances[pair2]
-
-            for pair in new_entries:
-                distances[pair] = new_entries[pair]
-                if pair[0] == pair[1]:
-                    path = self.get_cycle_path(self.get_by_address(pair[0]), pair[0])
-                    return path
-
-        return []
-
-    def get_cycle_path(self, curr_node, goal_node_index):
-        for dep in curr_node['deps']:
-            if dep == goal_node_index:
-                return [curr_node['address']]
-        for dep in curr_node['deps']:
-            path = self.get_cycle_path(self.get_by_address(dep), goal_node_index)
-            if len(path) > 0:
-                path.insert(0, curr_node['address'])
-                return path
-        return []
+            assert cell_number == len(cells), '%d vs %d' % (cell_number, len(cells))
+            try:
+                self.add_node(cell_extractor(cells, index))
+            except KeyError:
+                raise ValueError('Extraction not supported for tab-delimited fields %d and %s'
+                                 % (cell_number, cell_extractor))
+        return True
 
     def to_conll(self, style):
         if style == 3:
-            template = '{word}\t{tag}\t{head}\n'
+            template = '{form}\t{cpostag}\t{head}\n'
         elif style == 4:
-            template = '{word}\t{tag}\t{head}\t{rel}\n'
+            template = '{form}\t{cpostag}\t{head}\t{deprel}\n'
         elif style == 10:
-            template = '{i}\t{word}\t{lemma}\t{ctag}\t{tag}\t{feats}\t{head}\t{rel}\t_\t_\n'
+            template = '%{id}d\t{form}\t{lemma}\t{cpostag}\t{tag}\t{feats}\t{head}\t{deprel}\t{deps}\t{misc}'
         else:
             raise ValueError(
                 'Number of tab-delimited fields ({0}) not supported by '
                 'CoNLL(10) or Malt-Tab(4) format'.format(style)
             )
-        return ''.join(template.format(i=i, **node) for i, node in sorted(self.nodes.items()) if node['tag'] != 'TOP')
-
+        return '\n'.join(template.format(**node._asdict()) for node in self.nodes)

@@ -40,12 +40,12 @@ class DependencyEvaluator(object):
 
         for parsed, gold in izip(self._parsed_sents, self._gold_sents):
             assert len(parsed.nodes) == len(gold.nodes), "Sentences must have equal length."
-            for parsed_node_address, parsed_node in parsed.nodes.iteritems():
-                if parsed_node_address == 0:
+            for parsed_node in parsed.nodes:
+                if parsed_node.id == 0:
                     continue  # skipping the root node
-                gold_node = gold.nodes[parsed_node_address]
+                gold_node = gold.nodes[parsed_node.id]
                 total += 1
-                if parsed_node['tag'] == gold_node['tag']:
+                if parsed_node.cpostag == gold_node.cpostag:
                     corr += 1
 
         return corr / total
@@ -64,23 +64,23 @@ class DependencyEvaluator(object):
         for parsed, gold in izip(self._parsed_sents, self._gold_sents):
             assert len(parsed.nodes) == len(gold.nodes), "Sentences must have equal length."
 
-            for parsed_node_address, parsed_node in parsed.nodes.iteritems():
-                gold_node = gold.nodes[parsed_node_address]
+            for parsed_node in parsed.nodes:
+                gold_node = gold.nodes[parsed_node.id]
 
-                if parsed_node["word"] is None:
+                if parsed_node.form is None:
                     continue
-                if parsed_node["word"] != gold_node["word"]:
+                if parsed_node.form != gold_node.form:
                     raise ValueError("Sentence sequence is not matched.")
 
                 # Ignore if word is punctuation by default
                 # if (parsed_sent[j]["word"] in string.punctuation):
-                if self._remove_punct(parsed_node["word"]) == "":
+                if self._remove_punct(parsed_node.form) == "":
                     continue
 
                 total += 1
-                if parsed_node["head"] == gold_node["head"]:
+                if parsed_node.head == gold_node.head:
                     corr += 1
-                    if parsed_node["rel"] == gold_node["rel"]:
+                    if parsed_node.deprel == gold_node.deprel:
                         corrL += 1
 
         return corr / total, corrL / total
