@@ -52,13 +52,8 @@ class DependencyGraph(object):
     @staticmethod
     def load(filename, cell_separator=None):
         with open(filename) as infile:
-            return [
-                DependencyGraph(
-                    tree_str,
-                    cell_separator=cell_separator,
-                )
-                for tree_str in infile.read().strip().split('\n\n')
-            ]
+            return [DependencyGraph(tree_str, cell_separator=cell_separator)
+                    for tree_str in infile.read().strip().split('\n\n')]
 
     @staticmethod
     def save_conll(filename, graphs, columns=10):
@@ -67,7 +62,7 @@ class DependencyGraph(object):
             wp.write('\n'.join(conll_sentences))
 
 
-    def __init__(self, tree_str=None, cell_extractor=None, cell_separator=None):
+    def __init__(self, tree_str=None, n=None, cell_extractor=None, cell_separator=None):
         """Dependency graph.
 
         A dummy `ROOT` node has always the index 0,
@@ -77,19 +72,32 @@ class DependencyGraph(object):
         """
 
         self.nodes = [Node(id=0, cpostag='root')]
+        self.children = []  # TODO change it to default list with set
         if tree_str:
             self._parse(tree_str, cell_extractor=cell_extractor, cell_separator=cell_separator, )
+            if n is not None and (n + 1) != len(self.nodes):
+                raise ValueError('The loaded tree is expected to have %d nodes but has %d' % (n, len(self.nodes)))
+        elif n is not None:
+            self.nodes += [None] * n
+            self.children = [set([]) for _ in self.nodes]
 
-    def add_node(self, node):
+    def update_node(self, node):
         assert isinstance(node, Node)
-        assert node.id == len(self.nodes), '%d vs %d' % (node.id, len(self.nodes))
-        self.nodes.append(node)
+        assert 0 <= node.id < len(self.nodes)
+        orig = self.nodes[node.id]
+        if orig is not None and orig.head is not None and node.head != orig.head:
+            self.children[orig.head].remove(orig.id)
+            if node.head is not None:
+                self.children[node.head].add(node.id)
+        self.nodes[node.id] = node
 
     def update_dependency(self, head, dep):
         """Updates new dependency arc to new head and new label.
         """
         assert 0 <= head < len(self.nodes)
         assert 0 <= dep < len(self.nodes)
+        self.children[self.nodes[dep].head].remove(dep)
+        self.children[head].add(dep)
         new_dep_node = self.nodes[dep]._replace(head=head)
         self.nodes[dep] = new_dep_node
 
@@ -135,7 +143,7 @@ class DependencyGraph(object):
     def __repr__(self):
         return "<DependencyGraph with {0} nodes>".format(len(self.nodes))
 
-    def _parse(self, input_, cell_extractor=None, cell_separator=None):
+    def _parse(self, input_, cell_extractor=None, cell_separator=None, none_values=None):
         """Parse a sentence.
         Returns True for success
 
@@ -144,6 +152,7 @@ class DependencyGraph(object):
         :param str cell_separator: the cell separator. If not provided, cells
         are split by whitespace.
         """
+        none_values = {'_'}
 
         def extract_3_cells(cells, index):
             form, tag, head = cells
@@ -169,7 +178,6 @@ class DependencyGraph(object):
             4: extract_4_cells,
             10: extract_10_cells,
         }
-
         if isinstance(input_, basestring):
             input_ = (line for line in input_.split('\n'))
 
@@ -184,15 +192,27 @@ class DependencyGraph(object):
         if cell_extractor is None:
             cell_extractor = extractors[cell_number]
 
+        self.nodes += [None] * len(lines)
+        self.children = [set([]) for _ in self.nodes]
+        assert len(self.children) == len(lines) + 1
+
         for index, line in enumerate(lines, start=1):
-            cells = line.split(cell_separator)
+            cells = [c if c not in none_values else None for c in line.split(cell_separator)]
             assert cell_number == len(cells), '%d vs %d' % (cell_number, len(cells))
             try:
-                self.add_node(cell_extractor(cells, index))
+                self.update_node(cell_extractor(cells, index))
             except KeyError:
                 raise ValueError('Extraction not supported for tab-delimited fields %d and %s'
                                  % (cell_number, cell_extractor))
+        self.children_from_nodes()
         return True
+
+    def children_from_nodes(self):
+        for n in self.nodes:
+            if n is None:
+                raise ValueError("Nodes of the graph should be populated to derive children from head relation")
+            if n.head is not None:
+                self.children[n.head].add(n.id)
 
     def to_conll(self, style):
         if style == 3:
@@ -206,4 +226,7 @@ class DependencyGraph(object):
                 'Number of tab-delimited fields ({0}) not supported by '
                 'CoNLL(10) or Malt-Tab(4) format'.format(style)
             )
+        for n in self.nodes:
+            if n is None:
+                print('fail')
         return '\n'.join(template.format(**node._asdict()) for node in self.nodes)

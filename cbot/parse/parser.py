@@ -326,7 +326,7 @@ def depgraph_to_headlabels(dgs):
 def heads_to_depgraph(heads, tags, words):
     assert len(tags) == len(words), '%d vs %d' % (len(tags), len(words))
     assert len(heads) + 1 == len(tags), '%d vs %d' % (len(heads), len(tags))
-    g = DependencyGraph()
+    g = DependencyGraph(n=len(words) - 2)
     for i, (w, h, t) in enumerate(izip(words, heads, tags)):
         if i == 0 and w == '<start>' and h is None:
             # Keep the default node intact
@@ -336,7 +336,7 @@ def heads_to_depgraph(heads, tags, words):
             if words[h] == 'ROOT' or words[h] == 'root':
                 h = 0
             n = Node(id=i, form=w, head=h, cpostag=t)
-            g.add_node(n)
+            g.update_node(n)
     return g
 
 
