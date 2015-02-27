@@ -109,6 +109,11 @@ class DependencyGraph(object):
         new_dep_node = self.nodes[dep]._replace(head=head)
         self.nodes[dep] = new_dep_node
 
+    def remove_dependencies(self):
+        for i, node in enumerate(self.nodes):
+            self.nodes[i] = node._replace(head=None)
+            self.children[i] = set([])
+
     def to_dot(self):
         """
         Returns a dot representation suitable for using with Graphviz

@@ -1,12 +1,14 @@
 """A simple implementation of a greedy transition-based parser. Released under BSD license."""
+import copy
 from itertools import izip
 from os import path
 
 import os
 from collections import defaultdict
 import random
+from cbot.parse import evaluate
 from cbot.parse.perceptron import Perceptron
-from cbot.parse.pos import PerceptronTagger, DefaultList
+from cbot.parse.pos import DefaultList
 from dependencygraph import DependencyGraph, Node
 import logging
 
@@ -15,27 +17,17 @@ RIGHT = 1;
 LEFT = 2;
 MOVES = (SHIFT, RIGHT, LEFT)
 
+
 class NonProjectiveException(Exception):
     pass
 
-class Parse(object):
-    def __init__(self, n):
-        self.n = n
-        self.heads = [None] * (n - 1)
-        self.labels = [None] * (n - 1)
-        self.lefts = []
-        self.rights = []
-        for i in range(n + 1):
-            self.lefts.append(DefaultList(0))
-            self.rights.append(DefaultList(0))
 
-    def add(self, head, child, label=None):
-        self.heads[child] = head
-        self.labels[child] = label
-        if child < head:
-            self.lefts[head].append(child)
-        else:
-            self.rights[head].append(child)
+def discard_dependencies(g):
+    assert isinstance(g, DependencyGraph)
+    new_g = copy.deepcopy(g)
+    new_g.remove_dependencies()
+    return new_g
+
 
 def tags_to_dg(words, tags):
     assert len(words) == len(tags)
@@ -44,6 +36,7 @@ def tags_to_dg(words, tags):
         n = Node(id=i, form=w, cpostag=t)
         dg.update_node(n)
     return dg
+
 
 class Parser(object):
     def __init__(self, tagger, load=True):
@@ -59,68 +52,60 @@ class Parser(object):
         self.tagger.save()
 
     def parse(self, words):
-        n, i, stack = len(words), 2, [1]
-        parse = Parse(n)
         tags = self.tagger.tag(words)
-        dg = tags_to_dg(words, tags)
+        parse_graph = tags_to_dg(words, tags)
+
+        n = len(parse_graph.nodes) - 1
+        i, stack = 2, [1]
         while stack or (i + 1) < n:
-            features = extract_features(dg, i, n, stack, parse)
+            features = extract_features(parse_graph, i, stack)
             scores = self.model.score(features)
             valid_moves = get_valid_moves(i, n, len(stack))
             guess = max(valid_moves, key=lambda move: scores[move])
-            i = transition(guess, i, stack, parse)
-        # FIXME updating the dependencies from parse -> remove parse and heads
-        dg.nodes = [dg.nodes[0]] + dg.nodes[2:-1]  # FIXME discard <start> and <ROOT> from POS
-        for child, head in enumerate(parse.heads):
-            if head is not None:
-                # FIXME <ROOT> was the last element, and we removed 2
-                if head == len(dg.nodes) + 1:
-                    head = 0
-                dg.update_dependency(head, child)
-        dg.children_from_nodes()
-        return dg
+            i = transition(guess, i, stack, parse_graph)
+        parse_graph.children_from_nodes()
+        return parse_graph
 
     def train_one(self, itn, gold_graph):
-        n = len(gold_graph.nodes - 1)
-        i = 2;
-        stack = [1];
-        parse = Parse(n)
+        n = len(gold_graph.nodes) - 1
+        i, stack = 2, [1]
+        parse_graph = discard_dependencies(gold_graph)
         while stack or (i + 1) < n:
-            features = extract_features(gold_graph, i, n, stack, parse)
+            features = extract_features(parse_graph, i, stack)
             scores = self.model.score(features)
             valid_moves = get_valid_moves(i, n, len(stack))
-            gold_moves = get_gold_moves(i, n, stack, parse.heads, gold_heads)
+            gold_moves = get_gold_moves(i, n, stack, gold_graph)
             guess = max(valid_moves, key=lambda move: scores[move])
             if len(gold_moves) == 0:
                 raise NonProjectiveException('%s is non projective sentence' % gold_graph)
             best = max(gold_moves, key=lambda move: scores[move])
             self.model.update(best, guess, features)
-            i = transition(guess, i, stack, parse)
+            i = transition(guess, i, stack, parse_graph)
             self.confusion_matrix[best][guess] += 1
-        return len([i for i in range(n - 1) if parse.heads[i] == gold_heads[i]])
+        ev = evaluate.DependencyEvaluator([parse_graph], [gold_graph])
+        return ev.score()
 
     def train(self, dep_graphs, nr_iter):
         for itn in range(nr_iter):
-            corr = 0;
-            total = 0
+            corr, corrL, total = 0, 0, 0
             random.shuffle(dep_graphs)
             for gold_graph in dep_graphs:
-                corr += self.train_one(itn, gold_graph)
-                total += len(gold_graph.nodes) - 1
-            print itn, '%.3f' % (float(corr) / float(total))
-        logging.info('Averaging weights')
+                corr_s, corrL_s, total_s = self.train_one(itn, gold_graph)
+                corr, corrL, total = corr + corr_s, corrL + corrL_s, total + total_s
+            logging.debug('It %d: %.3f UAS, %.3f LAS', itn, (corr / total), (corrL / total))
+        logging.debug('Averaging weights')
         self.model.average_weights()
 
 
-def transition(move, i, stack, parse):
+def transition(move, i, stack, parse_graph):
     if move == SHIFT:
         stack.append(i)
         return i + 1
     elif move == RIGHT:
-        parse.add(stack[-2], stack.pop())
+        parse_graph.update_dependency(stack[-2], stack.pop())
         return i
     elif move == LEFT:
-        parse.add(i, stack.pop())
+        parse_graph.update_dependency(i, stack.pop())
         return i
     assert move in MOVES
 
@@ -136,35 +121,36 @@ def get_valid_moves(i, n, stack_depth):
     return moves
 
 
-def get_gold_moves(n0, n, stack, heads, gold):
-    def deps_between(target, others, gold):
+def get_gold_moves(n0, n, stack, gold_g):
+    def deps_between(target, others, gold_g):
         for word in others:
-            if gold[word] == target or gold[target] == word:
+            if gold_g.nodes[word + 1].head == target or gold_g.nodes[target + 1].head == word:
                 return True
         return False
 
+
     valid = get_valid_moves(n0, n, len(stack))
-    if not stack or (SHIFT in valid and gold[n0] == stack[-1]):
+    if not stack or (SHIFT in valid and gold_g.nodes[n0 + 1].head == stack[-1]):
         return [SHIFT]
-    if gold[stack[-1]] == n0:
+    if gold_g.nodes[stack[-1] + 1].head == n0:
         return [LEFT]
     costly = set([m for m in MOVES if m not in valid])
     # If the word behind s0 is its gold head, Left is incorrect
-    if len(stack) >= 2 and gold[stack[-1]] == stack[-2]:
+    if len(stack) >= 2 and gold_g.nodes[stack[-1] + 1].head == stack[-2]:
         costly.add(LEFT)
     # If there are any dependencies between n0 and the stack,
     # pushing n0 will lose them.
-    if SHIFT not in costly and deps_between(n0, stack, gold):
+    if SHIFT not in costly and deps_between(n0, stack, gold_g):
         costly.add(SHIFT)
     # If there are any dependencies between s0 and the buffer, popping
     # s0 will lose them.
-    if deps_between(stack[-1], range(n0 + 1, n - 1), gold):
+    if deps_between(stack[-1], range(n0 + 1, n - 1), gold_g):
         costly.add(LEFT)
         costly.add(RIGHT)
     return [m for m in MOVES if m not in costly]
 
 
-def extract_features(dg, n0, n, stack, parse):
+def extract_features(dg, n0, stack):
     def get_stack_context(depth, stack, nodes, att):
         if depth >= 3:
             return getattr(nodes[stack[-1]], att), getattr(nodes[stack[-2]], att), getattr(nodes[stack[-3]], att)
@@ -175,26 +161,32 @@ def extract_features(dg, n0, n, stack, parse):
         else:
             return '', '', ''
 
-    def get_buffer_context(i, n, nodes, att):
+    def get_buffer_context(i, dg, att):
+        n = len(dg.nodes) - 1
         if i + 1 >= n:
-          return getattr(nodes[i], att), '', ''
+          return getattr(dg.nodes[i], att), '', ''
         elif i + 2 >= n:
-            return getattr(nodes[i], att), getattr(nodes[i + 1], att), ''
+            return getattr(dg.nodes[i], att), getattr(dg.nodes[i + 1], att), ''
         else:
-            return getattr(nodes[i], att), getattr(nodes[i + 1], att), getattr(nodes[i + 2], att)
+            return getattr(dg.nodes[i], att), getattr(dg.nodes[i + 1], att), getattr(dg.nodes[i + 2], att)
 
-    def get_parse_context(word, deps, nodes, att):
+    # def get_parse_context(word, deps, nodes, att):
+    def get_parse_context(side, word, dg, att):
         if word == -1:
             return 0, '', ''
-        deps = deps[word]
+        if side == 'left':
+            deps = [c for c in dg.children[word] if c < word]
+        elif side == 'right':
+            deps = [c for c in dg.children[word] if c > word]
+        else:
+            raise ValueError('Only <left|right> dependencies are allowed')
         valency = len(deps)
-        if not valency:
+        if valency == 0:
             return 0, '', ''
         elif valency == 1:
-            return 1, getattr(nodes[deps[-1]], att), ''
+            return 1, getattr(dg.nodes[deps[-1]], att), ''
         else:
-            return valency, getattr(nodes[deps[-1]], att), getattr(nodes[deps[-2]], att)
-    assert len(dg.nodes) == n + 1
+            return valency, getattr(dg.nodes[deps[-1]], att), getattr(dg.nodes[deps[-2]], att)
 
     features = {}
     # Set up the context pieces --- the word (W) and tag (T) of:
@@ -210,21 +202,19 @@ def extract_features(dg, n0, n, stack, parse):
     Ws0, Ws1, Ws2 = get_stack_context(depth, stack, dg.nodes, 'form')
     Ts0, Ts1, Ts2 = get_stack_context(depth, stack, dg.nodes, 'cpostag')
 
-    Wn0, Wn1, Wn2 = get_buffer_context(n0, n, dg.nodes, 'form')
-    Tn0, Tn1, Tn2 = get_buffer_context(n0, n, dg.nodes, 'cpostag')
+    Wn0, Wn1, Wn2 = get_buffer_context(n0, dg, 'form')
+    Tn0, Tn1, Tn2 = get_buffer_context(n0, dg, 'cpostag')
 
-    Vn0b, Wn0b1, Wn0b2 = get_parse_context(n0, parse.lefts, dg.nodes, 'form')
-    Vn0b, Tn0b1, Tn0b2 = get_parse_context(n0, parse.lefts, dg.nodes, 'cpostag')
+    Vn0b, Wn0b1, Wn0b2 = get_parse_context('left', n0, dg, 'form')
+    Vn0b, Tn0b1, Tn0b2 = get_parse_context('left', n0, dg, 'cpostag')
 
-    # Vn0f, Wn0f1, Wn0f2 = get_parse_context(n0, parse.rights, dg.nodes, 'form')
+    _, Tn0f1, Tn0f2 = get_parse_context('right', n0, dg, 'cpostag')
 
-    _, Tn0f1, Tn0f2 = get_parse_context(n0, parse.rights, dg.nodes, 'cpostag')
+    Vs0b, Ws0b1, Ws0b2 = get_parse_context('left', s0, dg, 'form')
+    _, Ts0b1, Ts0b2 = get_parse_context('left', s0, dg, 'cpostag')
 
-    Vs0b, Ws0b1, Ws0b2 = get_parse_context(s0, parse.lefts, dg.nodes, 'form')
-    _, Ts0b1, Ts0b2 = get_parse_context(s0, parse.lefts, dg.nodes, 'cpostag')
-
-    Vs0f, Ws0f1, Ws0f2 = get_parse_context(s0, parse.rights, dg.nodes, 'form')
-    _, Ts0f1, Ts0f2 = get_parse_context(s0, parse.rights, dg.nodes, 'cpostag')
+    Vs0f, Ws0f1, Ws0f2 = get_parse_context('right', s0, dg, 'form')
+    _, Ts0f1, Ts0f2 = get_parse_context('right', s0, dg, 'cpostag')
 
     # Cap numeric features at 5? 
     # String-distance
@@ -272,4 +262,3 @@ def extract_features(dg, n0, n, stack, parse):
         if w_t or v_d:
             features['val/d-%d %s %d' % (i, w_t, v_d)] = 1
     return features
-

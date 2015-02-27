@@ -16,6 +16,7 @@ parser.add_argument('--dev-file', default='universal-dependencies-1.0/en/en-ud-t
 parser.add_argument('--test-file', default='universal-dependencies-1.0/en/en-ud-test-small.conllu')
 parser.add_argument('--test-parsed-file', default='test_parsed.conllu')
 parser.add_argument('--save-model', default=False, action='store_true')
+parser.add_argument('--load-pos', default=False, action='store_true')
 args = parser.parse_args()
 train_file = args.train_file
 dev_file = args.dev_file
@@ -28,7 +29,12 @@ train_graphs = DependencyGraph.load(train_file)
 test_graphs_gold = DependencyGraph.load(test_file)
 
 pos = PerceptronTagger()
-pos.train([(g.get_words_att('form'), g.get_words_att('cpostag')) for g in train_graphs])
+args.load_pos = True
+# FIXME the same POS model get worse after reloading: 91.5 - > 64.4
+if args.load_pos:
+    pos.load(PerceptronTagger.model_loc)
+else:
+    pos.train([(g.get_words_att('form'), g.get_words_att('cpostag')) for g in train_graphs])
 pos_decoded = [pos.tag(g.get_words_att('form')) for g in test_graphs_gold]
 pos_gold = [g.get_words_att('cpostag') for g in test_graphs_gold]
 c, t = 0, 0
@@ -36,8 +42,6 @@ for ds, gs in izip(pos_decoded, pos_gold):
     for d, g in izip(ds, gs):
         c, t = c + (d == g), t + 1
 logging.info('POS accuracy %f' % (c / t))
-
-
 if args.save_model:
     pos.save()
 

@@ -51,6 +51,10 @@ class DependencyEvaluator(object):
         return corr / total
 
     def eval(self):
+        corr, corrL, total = self.score()
+        return corr / total, corrL / total
+
+    def score(self):
         """
         Return the Labeled Attachment Score (LAS) and Unlabeled Attachment Score (UAS)
 
@@ -83,5 +87,4 @@ class DependencyEvaluator(object):
                     if parsed_node.deprel == gold_node.deprel:
                         corrL += 1
 
-        return corr / total, corrL / total
-
+        return corr, corrL, total
