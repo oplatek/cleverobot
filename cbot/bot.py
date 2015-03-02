@@ -98,7 +98,6 @@ class ChatBot(multiprocessing.Process):
             self.logger = logger
         self.kb = kb.KnowledgeBase() 
         self.state = dm.State(self.logger)
-        self.parse_to_kb = kb.parse_to_kb
         self.policy = dm.Policy(self.logger)
         self.nlg = nlg.Nlg(logger)
 
@@ -138,7 +137,7 @@ class ChatBot(multiprocessing.Process):
                     continue
                 if msg['user'].startswith('human'):
                     self.logger.info('Chatbot received message from human\n%s', msg)
-                    annotation = self.parse_to_kb(msg['utterance'], self.kb)
+                    annotation = self.kb.parse_to_kb(msg['utterance'], self.kb)
                     self.state.update_state(msg, annotation)
                     self._react()
                 elif msg['user'].startswith('state'):
