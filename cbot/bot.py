@@ -9,6 +9,7 @@ import time
 import logging
 from gevent import Greenlet
 import uuid
+from kb_data import data
 import dm
 import kb
 import sys
@@ -28,7 +29,6 @@ class ChatBotConnector(Greenlet):
     def __init__(self, response_cb, input_port, output_port, logger=None):
         super(ChatBotConnector, self).__init__()
 
-        print 'ONDRA DEBUG'
         self.context = zmq.Context()
         self.iresender = self.context.socket(zmq.PUSH)
         self.oresender = self.context.socket(zmq.PULL)
@@ -96,7 +96,10 @@ class ChatBot(multiprocessing.Process):
             self.logger = get_chatbot_logger()
         else:
             self.logger = logger
-        self.kb = kb.KnowledgeBase() 
+        self.kb = kb.KnowledgeBase()
+        self.kb._load_default_models()
+        self.kb.add_triplets(data)
+
         self.state = dm.State(self.logger)
         self.policy = dm.Policy(self.logger)
         self.nlg = nlg.Nlg(logger)
@@ -113,7 +116,7 @@ class ChatBot(multiprocessing.Process):
 
     def _react(self):
         self.logger.info('Generating reaction(s)')
-        actions = self.policy.choose_action(self.state.belief)
+        actions = self.policy.choose_action(self.state.belief, self.kb, self.nlg)
         self.logger.debug(actions)
         for a in actions:
             self.state.change_state(a)
