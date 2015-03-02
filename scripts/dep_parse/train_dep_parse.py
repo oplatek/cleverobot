@@ -29,14 +29,15 @@ train_graphs = DependencyGraph.load(train_file)
 test_graphs_gold = DependencyGraph.load(test_file)
 
 pos = PerceptronTagger()
-args.load_pos = True
+args.load_pos = False
+args.save_model = True
 # FIXME the same POS model get worse after reloading: 91.5 - > 64.4
 if args.load_pos:
-    pos.load(PerceptronTagger.model_loc)
+    pos.load()
 else:
     pos.train([(g.get_words_att('form'), g.get_words_att('cpostag')) for g in train_graphs])
-pos_decoded = [pos.tag(g.get_words_att('form')) for g in test_graphs_gold]
 pos_gold = [g.get_words_att('cpostag') for g in test_graphs_gold]
+pos_decoded = [pos.tag(g.get_words_att('form')) for g in test_graphs_gold]
 c, t = 0, 0
 for ds, gs in izip(pos_decoded, pos_gold):
     for d, g in izip(ds, gs):
