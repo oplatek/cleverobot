@@ -15,7 +15,7 @@ class Nlg(object):
             'greeting': cls._default_nlg_acton,
             'silence': cls._default_nlg_acton,
         }
-    
+
     def __init__(self, logger=None):
         if logger is None:
             self.logger = bot.get_chatbot_logger()
@@ -59,8 +59,8 @@ class Nlg(object):
         about = action['about']
         assert isinstance(about, tuple) and len(about) == 3, 'We model triplets only.'
         assertion = None
-        if about[1] is not None and about[1] is None and about[2] is None:
-            assertion = 'Do you mean %s?' % about[1]
+        if about[0] is not None and about[1] is None and about[2] is None:
+            assertion = 'Have you mention %s?' % about[0]
         elif about[0] is None and about[1] is not None and about[2] is None:
             assertion = 'What kind of action is %s' % about[1]
         elif about[0] is not None and about[1] is not None and about[2] is None:
@@ -79,6 +79,7 @@ class Nlg(object):
         inform = ' '.join(about)
         self.logger.debug('For action %s informing by %s', inform)
         return inform
+
 
 def indirect_object_q(triple):
     assert(isinstance(triple, tuple) and len(triple) == 3)

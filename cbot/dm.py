@@ -16,7 +16,8 @@ class State(object):
         else:
             self.logger = logger
 
-        self.belief = {'phase': 'greeting', 'history': []}
+        self.belief = {'phase': 'greeting', 'known_mentions': [], 'unknown_mentions': []}
+        self.history = []
         self._validate_state()
 
     def _validate_state(self):
@@ -24,13 +25,13 @@ class State(object):
         pass
 
     def update_state(self, msg, known_mentions, unknown_mentions):
-        timestamp, user_id = msg['time'], msg['user']
-        greeting_words = set(msg['utterance'].split()) & State.greetings
-        if len(greeting_words) > 0 and len(known_mentions) == 0:
-            self.belief['phase'] = 'greeting'
-            for w in greeting_words:
-                self.belief['history'].append((user_id, timestamp, w))
-
+        if len(self.history) > 100:  # FIXME handle history in more robust way
+            self.history.pop(0)
+        self.history.append(self.belief)
+        self.belief['utterance'] = msg['utterance']
+        self.belief['known_mentions'] = known_mentions
+        self.belief['unknown_mentions'] = unknown_mentions
+        self.belief.update(msg)
         self._validate_state()
 
 
@@ -56,29 +57,30 @@ class Policy(object):
         Attention is highest just after sensing a stimulus and fades away.
         The stimuli must vary to keep attention.
         """
-        actions = []
-        if belief['phase'] == 'update':
-            # special symbol does not directly generate action, but the act method continues after that!
-            new_belief_values = belief['new_belief_values']
-            for k, v in new_belief_values:
-                belief[k] = v
-
-        # From now on we do not change the belief directly, action need to be generated
-        phase = belief['phase']
-        if phase == 'greeting':
+        greeting_words = set(belief['utterance'].split()) & State.greetings
+        if len(greeting_words) > 0 and len(belief['known_mentions']) == 0:
             self.logger.info('Choose greeting action')
-            belief['phase'] = 'asking'
-            self.logger.debug('after action greeting changing belief to %s', belief['phase'])
             return [{'type': 'greeting'}]
-        elif phase == 'elisa':
+        elif len(belief['known_mentions']) > 0:
+            return self._ask_kb_mention(belief, kb)
+        elif len(belief['unknown_mentions']) > 0:
             return self._elisa_actions(belief)
-        elif phase == 'asking':
-            return self._ask_actions(belief, kb)
+        elif len(belief['known_mentions']) == 0 and len(belief['unknown_mentions']) == 0:
+            return self._ask_kb_rand(kb)
         else:
-            self.logger.error('Unknown phase type')
+            self.logger.error('Do not know how to ask questions')
             return []
 
-    def _ask_actions(self, state, kb):
+    def _ask_kb_mention(self, belief, kb, limit=2):
+        actions = []
+        kb_mentions = belief['known_mentions']
+        for m in kb_mentions:
+            actions.append({'type': 'confirm', 'about': m})
+            if len(actions) > limit:
+                break
+        return actions
+
+    def _ask_kb_rand(self, kb):
         actions = []
         self.logger.debug("Pursue your own goal: get knowledge about something")
         # get fact to ask about FIXME interesting choice for user
@@ -96,7 +98,7 @@ class Policy(object):
 
     def _elisa_actions(self, state):
         actions = []
-        history = state['history']
+        history = state.history
         for t in history[::-1]:
             if t[0] == 'mention':
                 user_id, timestamp, w, tags = t[1:]

@@ -13,6 +13,11 @@ class NlgTest(unittest.TestCase):
         # FIXME based on the kb generate some question and compare them to gold standard TODO create
         pass
 
+    def confirm_test(self):
+        n = nlg.Nlg()
+        answer = n.confirm({'type': 'confirm', 'about': ('Little Richard', None, None)})
+        self.assertTrue('Little Richard' in answer)
+
 
 if __name__ == '__main__':
     unittest.main()

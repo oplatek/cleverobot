@@ -11,7 +11,6 @@ from collections import defaultdict
 
 class KnowledgeBase(object):
     def __init__(self):
-        self._facts = set([])
         self._trip = defaultdict(set)  # set of triples (a, r, c)
         self._rtrip = defaultdict(set)  # the same triples reverse (c, r, a)
 
@@ -29,6 +28,18 @@ class KnowledgeBase(object):
             return self._rtrip[node]
         else:
             return self._trip[node]
+
+    def is_head(self, f):
+        if len(self.get_neighbours(f)) > 0:
+            return True
+        else:
+            return False
+
+    def is_tail(self, f):
+        if len(self.get_neighbours(f, reverse=True)) > 0:
+            return True
+        else:
+            return False
 
     def add_triplet(self, entA, rel, entB):
         self._trip[entA].add((entA, rel, entB))
@@ -68,11 +79,11 @@ class KnowledgeBase(object):
         facts_in_sentence = []
         for p, start, end in phrases:
             p_string = ' '.join(p)
-            if p_string in self._facts:
+            if self.is_head(p_string) or self.is_tail(p_string):
                 facts_in_sentence.append((start, end, p_string))
         # FIXME detect verbs/NE in more robust way
         verbs = dict([(i, tokens[i]) for i, t in enumerate(tags) if t == 'VERB'])
-        nouns = dict([(i, tokens[i]) for i, t in enumerate(tags) if t == 'NOUN'])
+        nouns = dict([(i, tokens[i]) for i, t in enumerate(tags) if t == 'NOUN' or t == 'PROPN'])
 
         known_mentions = []
         for sstart, send, sf in facts_in_sentence:

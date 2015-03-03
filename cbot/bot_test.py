@@ -28,25 +28,25 @@ class BotTest(unittest.TestCase):
             utt = self.user_utt[self.i]
         else:
             self.run = False
-            utt = ''
+            utt = 'Good bye'
         self.i += 1
         return wrap_msg(utt)
 
     def setUp(self):
-        random.seed(1987)
+        random.seed(198711)
         self.sent = []
         self.bot = bot.ChatBot(input_port=-6, output_port=-66)
         self.run = True
+        self.i = 0
         self.bot.should_run = self.should_run
+        self.bot.receive_msg = self.get_next_utt
+        self.responses = []
+        self.bot.send_msg = send_msg(self.responses)
 
     def test_loop(self):
-        self.user_utt = ['hi', 'how are you']
-        self.i = 0
-        responses = []
-        self.bot.receive_msg = self.get_next_utt
-        self.bot.send_msg = send_msg(responses)
+        self.user_utt = ['I know Little Richard']
         self.bot.chatbot_loop()
-        print responses
+        print self.responses
 
 if __name__ == '__main__':
     unittest.main()
