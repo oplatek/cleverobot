@@ -7,7 +7,7 @@ import cbot.bot
 
 
 class State(object):
-    form = {'phase': ['greeting', 'elisa', 'asking'], 'history': {}}
+    form = {'phase': ['greeting', 'elisa', 'asking'], 'history': []}
     greetings = {'Hi', "Hey", "Hello"}
 
     def __init__(self, logger=None):
@@ -18,44 +18,20 @@ class State(object):
 
         self.belief = {'phase': 'greeting', 'history': []}
         self._validate_state()
-        self._change_prob_t = 0.0
 
     def _validate_state(self):
         # TODO validate json schema of state
         pass
 
-    def update_state(self, msg, annotation):
+    def update_state(self, msg, known_mentions, unknown_mentions):
         timestamp, user_id = msg['time'], msg['user']
-        utterance, tokens, tags = annotation
-        bag_of_words = set(tokens)
-        greeting_words = bag_of_words & State.greetings
-        if len(greeting_words) > 0:
+        greeting_words = set(msg['utterance'].split()) & State.greetings
+        if len(greeting_words) > 0 and len(known_mentions) == 0:
             self.belief['phase'] = 'greeting'
             for w in greeting_words:
                 self.belief['history'].append((user_id, timestamp, w))
-        for w, t in tags:
-            if 'NN' == t:  # FIXME check if it is noun more clearly
-                self.belief['history'].append(('mention', user_id, timestamp, w, t))
+
         self._validate_state()
-
-    def change_state(self, action):
-        timestamp = datetime.datetime.now()
-
-        if action['type'] == 'greeting':
-            self.belief['phase'] = 'asking'
-            self.logger.debug('after action greeting changing state to %s', self.belief['phase'])
-        self.belief['history'].append(('action', timestamp, action))
-
-        phase = self.belief['phase']
-        if phase == 'asking' or phase == 'elisa':
-            change = random.random()
-            if change < self._change_prob_t:
-                if phase == 'asking':
-                    phase = 'elisa'
-                else:
-                    phase = 'asking'
-                self.logger.info('Changing from %s to %s', self.belief['phase'], phase)
-            self.belief['phase'] = phase
 
 
 class Policy(object):
@@ -66,11 +42,12 @@ class Policy(object):
             self.logger = cbot.bot.get_chatbot_logger()
         else:
             self.logger = logger
+        self._change_prob_t = 0.0
 
     # def get_feedback(self, score, action_id):
-    #     """It is probably more efficient split the training into another file """
+    # """It is probably more efficient split the training into another file """
 
-    def choose_action(self, state, kb, nlg):
+    def act(self, belief, kb):
         """TODO work with time and implement simple model of needs and attention:
 
         Need is gradually increasing until its fulfilled and reset.
@@ -79,19 +56,29 @@ class Policy(object):
         Attention is highest just after sensing a stimulus and fades away.
         The stimuli must vary to keep attention.
         """
-        phase = state['phase']
+        actions = []
+        if belief['phase'] == 'update':
+            # special symbol does not directly generate action, but the act method continues after that!
+            new_belief_values = belief['new_belief_values']
+            for k, v in new_belief_values:
+                belief[k] = v
+
+        # From now on we do not change the belief directly, action need to be generated
+        phase = belief['phase']
         if phase == 'greeting':
             self.logger.info('Choose greeting action')
-            return [{'type':'greeting'}]
+            belief['phase'] = 'asking'
+            self.logger.debug('after action greeting changing belief to %s', belief['phase'])
+            return [{'type': 'greeting'}]
         elif phase == 'elisa':
-            return self._elisa_actions(state)
+            return self._elisa_actions(belief)
         elif phase == 'asking':
-            return self._ask_actions(state, kb, nlg)
+            return self._ask_actions(belief, kb)
         else:
             self.logger.error('Unknown phase type')
             return []
 
-    def _ask_actions(self, state, kb, nlg):
+    def _ask_actions(self, state, kb):
         actions = []
         self.logger.debug("Pursue your own goal: get knowledge about something")
         # get fact to ask about FIXME interesting choice for user
@@ -99,12 +86,11 @@ class Policy(object):
         rand_node = random.sample(nodes, 1)[0]
         self.logger.debug('Sample node %s', rand_node)
         rand_rel = random.sample(kb.get_neighbours(rand_node), 1)[0]
-        mask = [random.randrange(0,2) for _ in xrange(3)]
+        mask = [random.randrange(0, 2) for _ in xrange(3)]
         rand_rel = tuple([x if m == 0 else None for x, m in zip(rand_rel, mask)])
         qs = ['ask', 'confirm']
-        for q in qs:
-            assert q in nlg.nlgf
         action_type = random.sample(qs, 1)[0]
+        assert action_type in cbot.nlg.Nlg.get_default_actions()
         actions.append({'type': action_type, 'about': rand_rel})
         return actions
 
@@ -115,6 +101,7 @@ class Policy(object):
             if t[0] == 'mention':
                 user_id, timestamp, w, tags = t[1:]
                 if datetime.datetime.utcnow() - datetime.datetime.fromtimestamp(timestamp) < self.reply_timeout:
-                    actions.append({'type':'ask','about': (w, None, None), 'context': {'tags': tags, 'user': user_id}})
+                    actions.append(
+                        {'type': 'ask', 'about': (w, None, None), 'context': {'tags': tags, 'user': user_id}})
                     break  # FIXME choose only first action -> some smarter way of choosing actions
         return actions

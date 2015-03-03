@@ -91,8 +91,8 @@ class ChatBot(multiprocessing.Process):
         self.input_port = input_port
         self.output_port = output_port
 
-        self.should_run = lambda: True
         if logger is None:
+            self.should_run = lambda: True
             self.logger = get_chatbot_logger()
         else:
             self.logger = logger
@@ -104,8 +104,27 @@ class ChatBot(multiprocessing.Process):
         self.policy = dm.Policy(self.logger)
         self.nlg = nlg.Nlg(logger)
 
+        self.timeout = 0.2
+        self.should_run = lambda: True
+        self.send_msg = self.zmq_send
+        self.receive_msg = self.receive_zmq
 
-    def _after_fork_init(self):
+    def receive_zmq(self):
+        socks = dict(self.poller.poll())
+        if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
+            msg = self.isocket.recv_json()
+        return msg
+
+    def zmq_send(self, utt):
+        msg = {
+            'time': time.time(),
+            'user': self.__class__.__name__,
+            'utterance': utt,
+            }
+        self.logger.info('Chatbot generated reply\n%s', msg)
+        self.osocket.send_json(msg)
+
+    def zmq_init(self):
         self.context = zmq.Context()
         self.isocket = self.context.socket(zmq.PULL)
         self.osocket = self.context.socket(zmq.PUSH)
@@ -114,47 +133,48 @@ class ChatBot(multiprocessing.Process):
         self.poller = zmq.Poller()
         self.poller.register(self.isocket, zmq.POLLIN)
 
-    def _react(self):
-        self.logger.info('Generating reaction(s)')
-        actions = self.policy.choose_action(self.state.belief, self.kb, self.nlg)
-        self.logger.debug(actions)
-        for a in actions:
-            self.state.change_state(a)
-            response = self.nlg.action2lang(a)
-            if response is None:
-                self.logger.debug('Action %s does not triggered response to user', a)
-            else:
-                self.logger.debug('Action %s triggered response %s', a, response)
-                self.send_utt(response)
-
     def run(self):
-        self._after_fork_init()
+        self.zmq_init()
+        self.chatbot_loop()
 
+    def chatbot_loop(self):
         while self.should_run():
-            socks = dict(self.poller.poll())
-            if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
-                msg = self.isocket.recv_json()
-                # TODO use json validation
-                if 'user' not in msg or 'utterance' not in msg:
-                    self.logger.error('user is not in msg: skipping message')
-                    continue
-                if msg['user'].startswith('human'):
-                    self.logger.info('Chatbot received message from human\n%s', msg)
-                    annotation = self.kb.parse_to_kb(msg['utterance'], self.kb)
-                    self.state.update_state(msg, annotation)
-                    self._react()
-                elif msg['user'].startswith('state'):
-                    self.logger.info('Chatbot received message from state changer\n%s' % msg)
-                    self.state = self.update_state(msg)
-                    self._react()
-                else:
-                    self.logger.error('Unrecognized user type')
+            msg = self.receive_msg()
+            # TODO use json validation
+            if 'user' not in msg or 'utterance' not in msg:
+                self.logger.error('user is not in msg: skipping message')
+                continue
+            if msg['user'].startswith('human'):
+                self.logger.info('Chatbot received message from human\n%s', msg)
+                known_mentions, unknown_mentions = self.kb.parse_to_kb(msg['utterance'], self.kb)
+                self.state.update_state(msg, known_mentions, unknown_mentions)
+                self.logger.info('Generating reaction(s)')
+                actions = self.policy.act(self.state.belief, self.kb)
+                start = time.time()
+                while len(actions) > 0 and (time.time() - start) < self.timeout:
+                    self.logger.debug(actions)
+                    a = actions.pop(0)
+                    response = self.nlg.action2lang(a)
+                    if response is None:
+                        self.logger.debug('Action %s does not triggered response to user', a)
+                        actions.extend(self.policy.act(self.state.belief, self.kb))
+                    else:
+                        self.logger.debug('Action %s triggered response %s', a, response)
+                        self.send_msg(response)
+            else:
+                self.logger.error('Unrecognized user type')
 
-    def send_utt(self, utt):
-        msg = {
-            'time': time.time(),
-            'user': self.__class__.__name__,
-            'utterance': utt,
-            }
-        self.logger.info('Chatbot generated reply\n%s', msg)
-        self.osocket.send_json(msg)
+
+if __name__ == '__main__':
+    bot = ChatBot(input_port=-6, output_port=-66)
+
+    def get_msg():
+        utt = raw_input("Tell me\n")
+        return { 'time': time.time(), 'user': 'human', 'utterance': utt}
+
+    def send_msg(x):
+        print('%s\n', x)
+
+    bot.receive_msg = get_msg
+    bot.send_msg = send_msg
+    bot.chatbot_loop()

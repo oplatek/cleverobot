@@ -2,10 +2,13 @@ import argparse
 import signal
 from cbot.bot import ChatBot
 
+bot = None
+
 
 def quit_gracefully(*args):
-    bot.terminate()
-    bot.join()
+    if bot is not None:
+        bot.terminate()
+        bot.join()
 
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, quit_gracefully)

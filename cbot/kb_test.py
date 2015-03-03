@@ -4,7 +4,6 @@ import unittest
 import tempfile
 import os
 import kb
-import StringIO
 import pickle
 
 
@@ -50,6 +49,14 @@ class KbTest(unittest.TestCase):
         k = kb.KnowledgeBase()
         k._load_default_models()
 
+
+class GenSubSeq(unittest.TestCase):
+    def test_gen_subseq(self):
+        x = range(3)
+        y = kb.generate_subseqs(x)
+        self.assertEqual(y,[([0, 1, 2], 0, 3),
+                            ([0, 1], 0, 2), ([1, 2], 1, 3),
+                            ([0], 0, 1), ([1], 1, 2), ([2], 2, 3)])
 
 
 if __name__ == '__main__':

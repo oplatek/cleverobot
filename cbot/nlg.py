@@ -4,25 +4,38 @@ import bot
 
 
 class Nlg(object):
+    _default_nlg_acton = lambda a: 'nlg action %s' % a
+
+    @classmethod
+    def get_default_actions(cls):
+        return {
+            'ask': cls._default_nlg_acton,
+            'confirm': cls._default_nlg_acton,
+            'inform': cls._default_nlg_acton,
+            'greeting': cls._default_nlg_acton,
+            'silence': cls._default_nlg_acton,
+        }
+    
     def __init__(self, logger=None):
         if logger is None:
             self.logger = bot.get_chatbot_logger()
         else:
             self.logger = logger
-        self.nlgf = {
+        self.nlgf = Nlg.get_default_actions()
+        self.nlgf.update({
             'ask': self.open_questions,
             'confirm': self.confirm,
             'inform': self.inform,
             'greeting': lambda action: 'Hi!',
             'silence': lambda action: '...',
-        }
+        })
 
     def action2lang(self, action):
         type = action['type']
         if type in self.nlgf:
             return self.nlgf[type](action)
         else:
-            self.logger.error('Generated of natural language not supported for type %s', action)
+            self.logger.warning('Generated of natural language not supported for type %s', action)
         return None
 
     def open_questions(self, action):
