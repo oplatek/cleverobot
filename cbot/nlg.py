@@ -60,7 +60,7 @@ class Nlg(object):
         assert isinstance(about, tuple) and len(about) == 3, 'We model triplets only.'
         assertion = None
         if about[0] is not None and about[1] is None and about[2] is None:
-            assertion = 'Have you mention %s?' % about[0]
+            assertion = 'Have you mentioned %s?' % about[0]
         elif about[0] is None and about[1] is not None and about[2] is None:
             assertion = 'What kind of action is %s' % about[1]
         elif about[0] is not None and about[1] is not None and about[2] is None:
