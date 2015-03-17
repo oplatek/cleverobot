@@ -2,3 +2,4 @@ pyzmq
 nltk
 numpy
 nose
+simplejson

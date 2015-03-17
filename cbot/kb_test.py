@@ -47,7 +47,7 @@ class KbTest(unittest.TestCase):
 
     def test_load_defaults(self):
         k = kb.KnowledgeBase()
-        k._load_default_models()
+        k.load_default_models()
 
 
 class GenSubSeq(unittest.TestCase):

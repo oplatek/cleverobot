@@ -24,7 +24,7 @@ nltk_data:
 	@echo 'Makefile does not check content of $@ only of exists'
 
 #### run ####
-RUN_BOT=export NLTK_DATA=`pwd`/nltk_data; export PYTHONPATH=`pwd`:$$PYTHONPATH; cd app/cleverbot; python run_bot.py --bot-input 6666 --bot-output 7777 & PID="$$!"; echo "Launched chatbot in background. PID: $$PID" ; python run.py --host $$ADDRESS --port $(PORT) --bot-input 6666 --bot-output 7777 $(DEBUG); echo "Keyboard interrup to chatbot backend $$PID" ; kill -SIGINT $$PID
+RUN_BOT=export NLTK_DATA=`pwd`/nltk_data; export PYTHONPATH=`pwd`:$$PYTHONPATH; cd app/cleverobot; python run_bot.py --bot-input 6666 --bot-output 7777 & PID="$$!"; echo "Launched chatbot in background. PID: $$PID" ; python run.py --host $$ADDRESS --port $(PORT) --bot-input 6666 --bot-output 7777 $(DEBUG); echo "Keyboard interrup to chatbot backend $$PID" ; kill -SIGINT $$PID
 
 run: nltk_data
 	export ADDRESS=127.0.0.1; $(RUN_BOT)
@@ -32,7 +32,7 @@ docker-run: nltk_data
 	docker run $(VOLUMES) -e ADDRESS=0.0.0.0 -p $(PORT):$(PORT) -i -t --rm oplatek/cleverobot /bin/bash -c '$(RUN_BOT)'
 
 #### tests ####
-UNIT_TEST=export NLTK_DATA=`pwd`/nltk_data; export PYTHONPATH=cbot:$$PYTHONPATH; nosetests -e test_factory app/cleverbot/; nosetests -e test_factory cbot
+UNIT_TEST=export NLTK_DATA=`pwd`/nltk_data; export PYTHONPATH=app:cbot:$$PYTHONPATH; nosetests -e test_factory app; nosetests -e test_factory cbot
 INTEGRATION_TEST=echo 'TODO integration tests'
 
 test: unit-test integration-test

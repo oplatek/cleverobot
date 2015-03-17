@@ -16,7 +16,7 @@ class KnowledgeBase(object):
 
         self.tagger = PerceptronTagger()
 
-    def _load_default_models(self):
+    def load_default_models(self):
         self.add_triplets(data)
         self.tagger.load()
 

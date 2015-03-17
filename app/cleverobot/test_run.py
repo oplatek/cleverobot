@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import unittest
-import run
+import app.cleverobot.run as run
+
 
 class RoutingTestCase(unittest.TestCase):
 

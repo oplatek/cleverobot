@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # encoding: utf-8
-import bot
+import cbot.bot
 
 
 class Nlg(object):
@@ -18,7 +18,7 @@ class Nlg(object):
 
     def __init__(self, logger=None):
         if logger is None:
-            self.logger = bot.get_chatbot_logger()
+            self.logger = cbot.bot.get_chatbot_logger()
         else:
             self.logger = logger
         self.nlgf = Nlg.get_default_actions()

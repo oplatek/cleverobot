@@ -6,6 +6,7 @@ import flask.ext.socketio as fsocketio
 import argparse
 import logging
 from cbot.bot import ChatBotConnector
+from cbot.bot import forwarder_device_start
 import cbot.bot_exceptions as botex
 
 app = Flask(__name__)
@@ -36,8 +37,10 @@ def internal_server_err(e):
 def begin_dialog(msg):
     try:
         fsocketio.session['chatbot'] = ChatBotConnector(web_response,
-                                                        cbot_input,
-                                                        cbot_output,)
+                                                        args.bot_input,
+                                                        args.bot_output,
+                                                        args.user_input,
+                                                        args.user_output,)
         fsocketio.session['chatbot'].start()
         app.logger.debug('ChatbotConnector initiated')
     except botex.BotNotAvailableException as e:  # TODO more specific error handling
@@ -92,13 +95,15 @@ if __name__ == '__main__':
     parser.add_argument('--no-debug', dest='debug', action='store_false')
     parser.set_defaults(debug=True)
     parser.add_argument('-l', '--log', default='cleverbot.log')
-    parser.add_argument('--bot-input', default='6666')
-    parser.add_argument('--bot-output', default='7777')
+    parser.add_argument('--bot-input', type=int, default=6666)
+    parser.add_argument('--bot-output', type=int, default=7777)
+    parser.add_argument('--user-input', type=int, default=8888)
+    parser.add_argument('--user-output', type=int, default=9999)
     args = parser.parse_args()
 
-    cbot_input = args.bot_input
-    cbot_output = args.bot_output
-    assert (cbot_output != cbot_input)
+
+    forwarder_process_bot = forwarder_device_start(args.bot_input, args.bot_output)
+    forwarder_process_user = forwarder_device_start(args.user_input, args.user_output)
 
     file_handler = logging.FileHandler(args.log, encoding='utf8')
     file_handler.setFormatter(logging.Formatter(
@@ -106,7 +111,6 @@ if __name__ == '__main__':
     file_handler.setLevel(logging.DEBUG)
 
     app.logger.addHandler(file_handler)
-    app.logger
     app.config['DEBUG'] = args.debug
     app.logger.info('args: %s', args)
 
