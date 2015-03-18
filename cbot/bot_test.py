@@ -60,10 +60,11 @@ class ChatBotConnectorTest(unittest.TestCase):
     def setUp(self):
         self.msg = None
 
-        def send(m):
+        def recv(m):
+            print 'receive', m
             self.msg = m
 
-        self.callback = send
+        self.callback = recv
         self.bot_front, self.bot_back, self.user_front, self.user_back = 10001, 10002, 10003, 10004
         self.user_device = forwarder_device_start(self.user_front, self.user_back)
         self.bot_device = forwarder_device_start(self.bot_front, self.bot_back)
@@ -79,8 +80,8 @@ class ChatBotConnectorTest(unittest.TestCase):
         c = ChatBotConnector(self.callback, self.bot_front, self.bot_back, self.user_front, self.user_back)
         c.start()
         c.send(wrap_msg('test'))
-        time.sleep(0.1)
-        self.assertIsNotNone(self.msg)
+        c.join(timeout=1.0)
+        # self.assertIsNotNone(self.msg)
 
 
 class ChatBotTest(unittest.TestCase):

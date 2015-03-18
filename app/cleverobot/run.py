@@ -76,6 +76,7 @@ def process_utt(msg):
 def end_recognition(msg):
     try:
         fsocketio.session['chatbot'].finalize(msg)
+        fsocketio.session['chatbot'].join(1.5)
     except botex.BotEndException as e:  # TODO more specific error handling
         app.logger.error('Error on end: %s\n%s', e, msg)
     finally:
@@ -88,7 +89,7 @@ def web_response(msg):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='cleverbot app')
+    parser = argparse.ArgumentParser(description='cleverobot app')
     parser.add_argument('-p', '--port', type=int, default=80)
     parser.add_argument('-t', '--host', default='0.0.0.0')
     parser.add_argument('-d', '--debug', dest='debug', action='store_true')
@@ -101,17 +102,25 @@ if __name__ == '__main__':
     parser.add_argument('--user-output', type=int, default=9999)
     args = parser.parse_args()
 
+    try:
+        file_handler = logging.FileHandler(args.log, encoding='utf8')
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)s [%(pathname)s:%(lineno)d]: \n%(message)s '))
+        file_handler.setLevel(logging.DEBUG)
+        app.logger.addHandler(file_handler)
+        app.config['DEBUG'] = args.debug
+        app.logger.setLevel(logging.DEBUG)
+        app.logger.info('args: %s', args)
 
-    forwarder_process_bot = forwarder_device_start(args.bot_input, args.bot_output)
-    forwarder_process_user = forwarder_device_start(args.user_input, args.user_output)
-
-    file_handler = logging.FileHandler(args.log, encoding='utf8')
-    file_handler.setFormatter(logging.Formatter(
-        '%(asctime)s %(levelname)s [%(pathname)s:%(lineno)d]: \n%(message)s '))
-    file_handler.setLevel(logging.DEBUG)
-
-    app.logger.addHandler(file_handler)
-    app.config['DEBUG'] = args.debug
-    app.logger.info('args: %s', args)
-
-    socketio.run(app, host=args.host, port=args.port)
+        forwarder_process_bot = forwarder_device_start(args.bot_input,
+                                                       args.bot_output,
+                                                       app.logger)
+        forwarder_process_user = forwarder_device_start(args.user_input,
+                                                        args.user_output,
+                                                        app.logger)
+        socketio.run(app, host=args.host, port=args.port)
+    finally:
+        if forwarder_process_bot is not None:
+            forwarder_process_bot.join(timeout=0.1)
+        if forwarder_process_user is not None:
+            forwarder_process_user.join(timeout=0.1)
