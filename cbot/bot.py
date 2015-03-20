@@ -42,10 +42,13 @@ def setup_logger(id):
     return logger
 
 
-def forwarder_device_start(frontend_port, backend_port):
+def forwarder_device_start(frontend_port, backend_port, logger=None):
     forwarder = ProcessDevice(zmq.FORWARDER, zmq.SUB, zmq.PUB)
     forwarder.setsockopt_in(zmq.SUBSCRIBE, b'')
 
+    if logger is not None:
+        logger.info('forwarder binding in to tcp://*:%d', frontend_port)
+        logger.info('forwarder binding out to tcp://*:%d', backend_port)
     forwarder.bind_in("tcp://*:%d" % frontend_port)
     forwarder.bind_out("tcp://*:%d" % backend_port)
 
@@ -54,18 +57,17 @@ def forwarder_device_start(frontend_port, backend_port):
 
 
 class ChatBotConnector(Greenlet):
-
     def __init__(self, response_cb, robot_front_port, robot_back_port,
                  user_front_port, user_back_port, logger=None):
         super(ChatBotConnector, self).__init__()
 
-        self.context = zmqg.Context()
-        self.pub2bot = self.context.socket(zmqg.PUB)
-        self.sub2bot = self.context.socket(zmqg.SUB)
-        self.pub2bot.connect('tcp://localhost:%d' % robot_front_port)
+        self.context = zmq.Context()
+        self.pub2bot = self.context.socket(zmq.PUB)
+        self.sub2bot = self.context.socket(zmq.SUB)
+        self.sub2bot.setsockopt(zmqg.SUBSCRIBE, b'')
         self.sub2bot.connect('tcp://localhost:%d' % user_back_port)
         self.poller = zmqg.Poller()
-        self.poller.register(self.sub2bot, zmqg.POLLIN)
+        self.poller.register(self.sub2bot, zmq.POLLIN)
         self.id = uuid.uuid4()
 
         if logger is None:
@@ -74,26 +76,31 @@ class ChatBotConnector(Greenlet):
         self.response = response_cb
         self.should_run = True  # change is based on the messages
         self.bot = ChatBot(robot_back_port, user_front_port)
-        self.bot.start()
-
-    def __del__(self):
-        super(ChatBotConnector, self).__init__()
-        self.bot.terminate()
+        self._bot_startup = 0.3  # s
 
     def send(self, msg):
         msg['id'] = str(self.id)
-        self.logger.info(msg)
+        self.logger.info('chatbotconnector %s', msg)
         self.pub2bot.send_json(msg)
 
     def _run(self):
-        while self.should_run:
-            socks = dict(self.poller.poll())
-            if self.oresender in socks and socks[self.oresender] == zmqg.POLLIN:
-                msg = self.oresender.recv_json()
-                self.response(msg)
-                self.logger.info(msg)
+        try:
+            # FIXME synchronise start
+            self.bot.start()
+            while self.should_run:
+                self.logger.debug('CONNECTOR BEFORE POLL')
+                socks = dict(self.poller.poll())
+                self.logger.debug('CONNECTOR AFTER POLL')
+                if self.sub2bot in socks and socks[self.sub2bot] == zmqg.POLLIN:
+                    msg = self.sub2bot.recv_json()
+                    self.logger.info('ChatBotConnector received bot msg %s' % msg)
+                    self.response(msg)
+        finally:
+            self.bot.terminate()
+            self.logger.info("ChatbotConnector finished")
 
     def finalize(self, msg):
+        # TODO set up control socket and use it in the poller to interrupt the loop
         self.should_run = False
 
 
@@ -108,6 +115,7 @@ class ChatBot(multiprocessing.Process):
     The obvious necessary sockets used are for input and output
     of the chatbot.
     """
+
     def __init__(self, input_port, output_port, name='ChatBot', logger=None):
         super(ChatBot, self).__init__()
         self.name = name
@@ -146,7 +154,7 @@ class ChatBot(multiprocessing.Process):
             'time': time.time(),
             'user': self.__class__.__name__,
             'utterance': utt,
-            }
+        }
         self.logger.info('Chatbot generated reply\n%s', msg)
         self.osocket.send_json(msg)
 
@@ -157,16 +165,21 @@ class ChatBot(multiprocessing.Process):
         self.osocket = self.context.socket(zmq.PUB)
         self.isocket.connect('tcp://localhost:%d' % self.input_port)
         self.osocket.connect('tcp://localhost:%d' % self.output_port)
+        self.logger.info('ChatBot input_port: %d' % self.input_port)
+        self.logger.info('ChatBot output_port: %d' % self.output_port)
         self.poller = zmq.Poller()
         self.poller.register(self.isocket, zmq.POLLIN)
 
     def run(self):
         self.zmq_init()
+        print 'zmq initiated'
         self.chatbot_loop()
 
     def chatbot_loop(self):
         while self.should_run():
+            self.logger.debug('Chatbot BEFORE POLL')
             msg = self.receive_msg()
+            self.logger.debug('Chatbot BEFORE After')
             if 'user' not in msg or 'utterance' not in msg:
                 self.logger.error('user is not in msg: skipping message')
                 continue
@@ -196,7 +209,7 @@ if __name__ == '__main__':
 
     def get_msg():
         utt = raw_input("Tell me\n")
-        return { 'time': time.time(), 'user': 'human', 'utterance': utt}
+        return {'time': time.time(), 'user': 'human', 'utterance': utt}
 
     def send_msg(x):
         print('%s\n', x)

@@ -3,10 +3,9 @@
 from __future__ import division
 import unittest
 import logging
-import bot
 import time
 import random
-from bot import ChatBot, ChatBotConnector, forwarder_device_start
+from cbot.bot import ChatBot, ChatBotConnector, forwarder_device_start
 import datetime
 import inspect
 import sys
@@ -42,7 +41,7 @@ class BotTest(unittest.TestCase):
     def setUp(self):
         random.seed(198711)
         self.sent = []
-        self.bot = bot.ChatBot(input_port=-6, output_port=-66)
+        self.bot = ChatBot(input_port=-6, output_port=-66)
         self.run = True
         self.i = 0
         self.bot.should_run = self.should_run
@@ -57,7 +56,8 @@ class BotTest(unittest.TestCase):
 
 
 class ChatBotConnectorTest(unittest.TestCase):
-    def setUp(self):
+
+    def test_chatbot_loop(self):
         self.msg = None
 
         def recv(m):
@@ -69,18 +69,17 @@ class ChatBotConnectorTest(unittest.TestCase):
         self.user_device = forwarder_device_start(self.user_front, self.user_back)
         self.bot_device = forwarder_device_start(self.bot_front, self.bot_back)
 
-    def tearDown(self):
-        pass
-        # TODO terminate
-        # self.user_device
-        # self.bot_device
-
-    def test_chatbot_loop(self):
-        self.assertIsNone(self.msg)
+        time.sleep(1.0)
         c = ChatBotConnector(self.callback, self.bot_front, self.bot_back, self.user_front, self.user_back)
         c.start()
+        print 'cannot sleep just after forking the process because it freezes the forking process'
+        time.sleep(1.0)
+        print 'after nap'
         c.send(wrap_msg('test'))
-        c.join(timeout=1.0)
+        time.sleep(0.1)
+        c.send(wrap_msg('test1'))
+        time.sleep(1.0)
+        # c.join(timeout=1.0)
         # self.assertIsNotNone(self.msg)
 
 

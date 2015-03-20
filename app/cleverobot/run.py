@@ -12,6 +12,7 @@ import cbot.bot_exceptions as botex
 app = Flask(__name__)
 app.secret_key = 12345  # TODO
 socketio = fsocketio.SocketIO(app)
+lo
 
 
 @app.route('/index')
