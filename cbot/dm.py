@@ -4,21 +4,15 @@ import abc
 import random
 import urllib2
 import simplejson
-import cbot
+import cbot.bot
 from nlg import Nlg
-import bot
 
 
 class State(object):
     form = {'phase': ['greeting', 'elisa', 'asking'], 'history': []}
     greetings = {'Hi', "Hey", "Hello"}
 
-    def __init__(self, logger=None):
-        if logger is None:
-            self.logger = cbot.bot.get_chatbot_logger()
-        else:
-            self.logger = logger
-
+    def __init__(self):
         self.belief = {'phase': 'greeting', 'known_mentions': [], 'unknown_mentions': []}
         self.history = []
         self._validate_state()
@@ -106,7 +100,7 @@ class KBRandomAsk(BaseAction):
         nodes = self.kb.get_nodes()
         rand_node = random.sample(nodes, 1)[0]
         # self.logger.debug('Sample node %s', rand_node)
-        neighbours =  self.kb.get_neighbours(rand_node)
+        neighbours = self.kb.get_neighbours(rand_node)
         if len(neighbours) == 0:
             rand_rel = (rand_node, None, None)
         else:
@@ -210,18 +204,14 @@ class DisplayImage(BaseAction):
 
 class RulebasedPolicy(object):
 
-    def __init__(self, kb, logger=None):
+    def __init__(self, kb, logger):
         self.greeting = Greeting()
         self.goodbye = Goodbye()
         self.elisaask = ElisaAsk()
         self.kbrandomask = KBRandomAsk(kb)
         self.kbmenttionask = KBMentionAsk(kb)
         self.displayimage = DisplayImage()
-
-        if logger is None:
-            self.logger = bot.get_chatbot_logger()
-        else:
-            self.logger = logger
+        self.logger = logger
 
     def act(self, state, kb):
         """TODO work with time and implement simple model of needs and attention:

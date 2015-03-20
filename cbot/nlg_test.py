@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 # encoding: utf-8
+import logging
 import unittest
 import nlg
 
+
 class NlgTest(unittest.TestCase):
     def test_action2nlg_select(self):
-        n = nlg.Nlg()
-        hi = n.action2lang({'type':'greeting'})
+        n = nlg.Nlg(logging.getLogger(''))
+        hi = n.action2lang({'type': 'greeting'})
         self.assertEqual(hi, 'Hi!')
 
     def test_indirect_object_q(self):
@@ -14,7 +16,7 @@ class NlgTest(unittest.TestCase):
         pass
 
     def confirm_test(self):
-        n = nlg.Nlg()
+        n = nlg.Nlg(logging.getLogger(''))
         answer = n.confirm({'type': 'confirm', 'about': ('Little Richard', None, None)})
         self.assertTrue('Little Richard' in answer)
 

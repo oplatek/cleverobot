@@ -3,7 +3,7 @@
 # from __future__ import unicode_literals
 import multiprocessing
 import os
-import errno
+import sys
 import zmq.green as zmqg
 import zmq
 from zmq.devices import ProcessDevice
@@ -11,34 +11,60 @@ import time
 import logging
 from gevent import Greenlet
 import uuid
+from zmq.log.handlers import PUBHandler
 from kb_data import data
 import dm as dm
 import cbot.kb as kb
-import sys
 import nlg
 
 
-def get_chatbot_logger():
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
-    ch = logging.StreamHandler(sys.stdout)
-    logger.addHandler(ch)
-    return logger
+LOGGING_ADDRESS = 'tcp://127.0.0.1:6699'
 
 
-def setup_logger(id):
-    dirname = os.path.dirname(os.path.abspath(__file__))
-    logger = logging.getLogger(__name__)
-    logdir = os.path.join(dirname, 'logs')
-    try:
-        os.mkdir(logdir)
-    except OSError, e:
-        if e.errno != errno.EEXIST:
-            raise
-    name = '%d_%d.log' % (time.time(), id)
+def log_from_subscriber(sub):
+    """
+    :param sub:socket(zmq.SUB)
+    :return:(str, str) logging.LEVEL, log message
+    """
+    level, msg = sub.recv_multipart()
+    if msg.endswith('\n'):
+        msg = msg[:-1]
+    level = level.lower()
+    logf = getattr(logging, level)
+    logf(msg)
+
+
+def log_loop(level=logging.DEBUG, address=LOGGING_ADDRESS, format='%(asctime)s %(message)s'):
+    import zmq
+    ctx = zmq.Context()
+    sub = ctx.socket(zmq.SUB)
+    sub.bind(address)
+    sub.setsockopt(zmq.SUBSCRIBE, b'')
+
+    logging.basicConfig(level=level, format=format, filename='test_bot.log')
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG)
+    console.setFormatter(logging.Formatter(format))
+    logging.getLogger('').addHandler(console)
+
+    while True:
+        log_from_subscriber(sub)
+
+
+def connect_logger(context, name=None, address=LOGGING_ADDRESS):
+    """
+    Create logger for zmq.context() which need to taken from process of intended use.
+    :return: logging.Logger
+    """
+    pub = context.socket(zmq.PUB)
+    if name is None:
+        name = __name__ + str(os.getpid())
+    pub.connect(address)
+    logger = logging.getLogger(name)
+    handler = PUBHandler(pub)
+    logger.addHandler(handler)
+    # Let the logs be filter at the listener.
     logger.setLevel(logging.DEBUG)
-    ch = logging.FileHandler(os.path.join(logdir, name), mode='w', delay=True)
-    logger.addHandler(ch)
     return logger
 
 
@@ -47,8 +73,8 @@ def forwarder_device_start(frontend_port, backend_port, logger=None):
     forwarder.setsockopt_in(zmq.SUBSCRIBE, b'')
 
     if logger is not None:
-        logger.info('forwarder binding in to tcp://*:%d', frontend_port)
-        logger.info('forwarder binding out to tcp://*:%d', backend_port)
+        logger.debug('forwarder binding in to tcp://*:%d', frontend_port)
+        logger.debug('forwarder binding out to tcp://*:%d', backend_port)
     forwarder.bind_in("tcp://*:%d" % frontend_port)
     forwarder.bind_out("tcp://*:%d" % backend_port)
 
@@ -57,47 +83,47 @@ def forwarder_device_start(frontend_port, backend_port, logger=None):
 
 
 class ChatBotConnector(Greenlet):
-    def __init__(self, response_cb, robot_front_port, robot_back_port,
-                 user_front_port, user_back_port, logger=None):
+    def __init__(self, response_cb, bot_front_port, bot_back_port,
+                 user_front_port, user_back_port):
         super(ChatBotConnector, self).__init__()
 
-        self.context = zmq.Context()
+        self.context = zmqg.Context()
         self.pub2bot = self.context.socket(zmq.PUB)
         self.sub2bot = self.context.socket(zmq.SUB)
-        self.sub2bot.setsockopt(zmqg.SUBSCRIBE, b'')
-        self.sub2bot.connect('tcp://localhost:%d' % user_back_port)
+        self.sub2bot.setsockopt(zmq.SUBSCRIBE, b'')
+        self.pub2bot.connect('tcp://127.0.0.1:%d' % bot_front_port)
+        self.sub2bot.connect('tcp://127.0.0.1:%d' % user_back_port)
         self.poller = zmqg.Poller()
         self.poller.register(self.sub2bot, zmq.POLLIN)
         self.id = uuid.uuid4()
 
-        if logger is None:
-            self.logger = setup_logger(self.id)
-
+        self.logger = connect_logger(self.context, self.__class__.__name__ + str(self.id))
         self.response = response_cb
         self.should_run = True  # change is based on the messages
-        self.bot = ChatBot(robot_back_port, user_front_port)
-        self._bot_startup = 0.3  # s
+
+        self.bot = ChatBot(bot_back_port, user_front_port)
+        self.bot.start()
+        print 'bot started'
 
     def send(self, msg):
         msg['id'] = str(self.id)
-        self.logger.info('chatbotconnector %s', msg)
+        self.logger.debug('chatbotconnector %s', msg)
         self.pub2bot.send_json(msg)
 
     def _run(self):
+        self.logger.debug('connector run started')
         try:
-            # FIXME synchronise start
-            self.bot.start()
             while self.should_run:
                 self.logger.debug('CONNECTOR BEFORE POLL')
                 socks = dict(self.poller.poll())
                 self.logger.debug('CONNECTOR AFTER POLL')
-                if self.sub2bot in socks and socks[self.sub2bot] == zmqg.POLLIN:
+                if self.sub2bot in socks and socks[self.sub2bot] == zmq.POLLIN:
                     msg = self.sub2bot.recv_json()
-                    self.logger.info('ChatBotConnector received bot msg %s' % msg)
+                    self.logger.debug('ChatBotConnector received bot msg %s' % msg)
                     self.response(msg)
         finally:
+            self.logger.debug("ChatbotConnector finished")
             self.bot.terminate()
-            self.logger.info("ChatbotConnector finished")
 
     def finalize(self, msg):
         # TODO set up control socket and use it in the poller to interrupt the loop
@@ -116,31 +142,22 @@ class ChatBot(multiprocessing.Process):
     of the chatbot.
     """
 
-    def __init__(self, input_port, output_port, name='ChatBot', logger=None):
+    def __init__(self, input_port, output_port, name='ChatBot'):
         super(ChatBot, self).__init__()
         self.name = name
-        # self.daemon = True
 
         self.input_port = input_port
         self.output_port = output_port
-
-        if logger is None:
-            self.should_run = lambda: True
-            self.logger = get_chatbot_logger()
-        else:
-            self.logger = logger
-        self.kb = kb.KnowledgeBase()
-        self.kb.load_default_models()
-        self.kb.add_triplets(data)
-
-        self.state = dm.State(self.logger)
-        self.policy = dm.RulebasedPolicy(self.kb, logger=self.logger)
-        self.nlg = nlg.Nlg(logger)
 
         self.timeout = 0.2
         self.should_run = lambda: True
         self.send_msg = self.zmq_send
         self.receive_msg = self.zmq_receive
+
+        self.state = dm.State()
+
+        print 'ChatBot initiated partially see Process run method'
+        self.logger, self.kb, self.policy, self.nlg = None, None, None, None
 
     def zmq_receive(self):
         # TODO use json validation
@@ -155,7 +172,7 @@ class ChatBot(multiprocessing.Process):
             'user': self.__class__.__name__,
             'utterance': utt,
         }
-        self.logger.info('Chatbot generated reply\n%s', msg)
+        self.logger.debug('Chatbot generated reply\n%s', msg)
         self.osocket.send_json(msg)
 
     def zmq_init(self):
@@ -163,23 +180,35 @@ class ChatBot(multiprocessing.Process):
         self.isocket = self.context.socket(zmq.SUB)
         self.isocket.setsockopt(zmq.SUBSCRIBE, b'')
         self.osocket = self.context.socket(zmq.PUB)
-        self.isocket.connect('tcp://localhost:%d' % self.input_port)
-        self.osocket.connect('tcp://localhost:%d' % self.output_port)
-        self.logger.info('ChatBot input_port: %d' % self.input_port)
-        self.logger.info('ChatBot output_port: %d' % self.output_port)
+        self.isocket.connect('tcp://127.0.0.1:%d' % self.input_port)
+        self.osocket.connect('tcp://127.0.0.1:%d' % self.output_port)
         self.poller = zmq.Poller()
         self.poller.register(self.isocket, zmq.POLLIN)
 
     def run(self):
         self.zmq_init()
-        print 'zmq initiated'
+        self.logger = connect_logger(self.context, self.__class__.__name__ + str(self.name))
+
+        self.logger.debug('Runs with input_port: %d' % self.input_port)
+        self.logger.debug('Runs with output_port: %d' % self.output_port)
+
+        self.kb = kb.KnowledgeBase()
+        self.kb.load_default_models()
+        self.kb.add_triplets(data)
+        self.logger.debug('KB loaded')
+
+        self.policy = dm.RulebasedPolicy(self.kb, self.logger)
+        self.nlg = nlg.Nlg(self.logger)
+        self.logger.debug('All components initiated')
+
         self.chatbot_loop()
 
     def chatbot_loop(self):
+        self.logger.debug('entering loop')
         while self.should_run():
             self.logger.debug('Chatbot BEFORE POLL')
             msg = self.receive_msg()
-            self.logger.debug('Chatbot BEFORE After')
+            self.logger.debug('Chatbot AFTER POLL')
             if 'user' not in msg or 'utterance' not in msg:
                 self.logger.error('user is not in msg: skipping message')
                 continue
@@ -187,7 +216,6 @@ class ChatBot(multiprocessing.Process):
                 self.logger.info('Chatbot received message from human\n%s', msg)
                 known_mentions, unknown_mentions = self.kb.parse_to_kb(msg['utterance'], self.kb)
                 self.state.update_state(msg, known_mentions, unknown_mentions)
-                self.logger.info('Generating reaction(s)')
                 actions = self.policy.act(self.state, self.kb)
                 start = time.time()
                 while len(actions) > 0 and (time.time() - start) < self.timeout:

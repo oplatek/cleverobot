@@ -1,18 +1,19 @@
 #!/usr/bin/env python
 # encoding: utf-8
+import multiprocessing
+import logging
 import time
 from flask import Flask, render_template
 import flask.ext.socketio as fsocketio
 import argparse
-import logging
-from cbot.bot import ChatBotConnector
+from cbot.bot import ChatBotConnector, connect_logger, log_loop
 from cbot.bot import forwarder_device_start
 import cbot.bot_exceptions as botex
+from multiprocessing import Process
 
 app = Flask(__name__)
 app.secret_key = 12345  # TODO
 socketio = fsocketio.SocketIO(app)
-lo
 
 
 @app.route('/index')
@@ -76,8 +77,8 @@ def process_utt(msg):
 @socketio.on('end')
 def end_recognition(msg):
     try:
-        fsocketio.session['chatbot'].finalize(msg)
-        fsocketio.session['chatbot'].join(1.5)
+        # fsocketio.session['chatbot'].finalize(msg)
+        fsocketio.session['chatbot'].terminate() # TODO
     except botex.BotEndException as e:  # TODO more specific error handling
         app.logger.error('Error on end: %s\n%s', e, msg)
     finally:
@@ -91,7 +92,7 @@ def web_response(msg):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='cleverobot app')
-    parser.add_argument('-p', '--port', type=int, default=80)
+    parser.add_argument('-p', '--port', type=int, default=3000)
     parser.add_argument('-t', '--host', default='0.0.0.0')
     parser.add_argument('-d', '--debug', dest='debug', action='store_true')
     parser.add_argument('--no-debug', dest='debug', action='store_false')
@@ -103,15 +104,12 @@ if __name__ == '__main__':
     parser.add_argument('--user-output', type=int, default=9999)
     args = parser.parse_args()
 
+    log_process = Process(target=log_loop)
+    forwarder_process_bot, forwarder_process_user = None, None
     try:
-        file_handler = logging.FileHandler(args.log, encoding='utf8')
-        file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s %(levelname)s [%(pathname)s:%(lineno)d]: \n%(message)s '))
-        file_handler.setLevel(logging.DEBUG)
-        app.logger.addHandler(file_handler)
-        app.config['DEBUG'] = args.debug
-        app.logger.setLevel(logging.DEBUG)
-        app.logger.info('args: %s', args)
+        log_process.start()
+        # app.logger = get_logger('webserver')
+        # app.logger.info('args: %s', args)
 
         forwarder_process_bot = forwarder_device_start(args.bot_input,
                                                        args.bot_output,
@@ -125,3 +123,4 @@ if __name__ == '__main__':
             forwarder_process_bot.join(timeout=0.1)
         if forwarder_process_user is not None:
             forwarder_process_user.join(timeout=0.1)
+        log_process.terminate()

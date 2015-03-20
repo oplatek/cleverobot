@@ -16,11 +16,8 @@ class Nlg(object):
             'silence': cls._default_nlg_acton,
         }
 
-    def __init__(self, logger=None):
-        if logger is None:
-            self.logger = cbot.bot.get_chatbot_logger()
-        else:
-            self.logger = logger
+    def __init__(self, logger):
+        self.logger = logger
         self.nlgf = Nlg.get_default_actions()
         self.nlgf.update({
             'ask': self.open_questions,
