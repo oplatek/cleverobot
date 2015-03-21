@@ -15,7 +15,7 @@ from zmq.log.handlers import PUBHandler
 from kb_data import data
 import dm as dm
 import cbot.kb as kb
-import nlg
+import cbot.nlg as nlg
 
 
 LOGGING_ADDRESS = 'tcp://127.0.0.1:6699'

@@ -20,6 +20,7 @@ class Nlg(object):
         self.logger = logger
         self.nlgf = Nlg.get_default_actions()
         self.nlgf.update({
+            'raw': lambda action: action['raw'],
             'ask': self.open_questions,
             'confirm': self.confirm,
             'inform': self.inform,

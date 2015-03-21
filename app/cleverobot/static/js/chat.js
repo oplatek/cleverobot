@@ -33,7 +33,7 @@ $(document).ready(function() {
     socket.on('socketbot', function(msg){
         console.log('Receiving msg' + msg);
         var $messages = $('#messages');
-        $messages.prepend($('<li class="socketbot">').text(msg.utterance));
+        $messages.prepend($('<li class="socketbot">').prepend(msg.utterance));
         $messages.scrollTop(0);
     });
     socket.on('server_error', function(msg){

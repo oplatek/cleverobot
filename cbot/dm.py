@@ -4,6 +4,7 @@ import abc
 import random
 import urllib2
 import simplejson
+import time
 import cbot.bot
 from nlg import Nlg
 
@@ -46,7 +47,7 @@ class BaseAction(object):
         return [self.repeated_probability(state),
                 self.compatibility_probability(state),
                 self.repeated_probability(state),
-                self.time_act_needed(state)]
+                self.need_probability(state)]
 
     def requested_probability(self, state):
         return 0.0
@@ -59,7 +60,7 @@ class BaseAction(object):
         return 0.0
 
     # @abc.abstractmethod
-    def time_act_needed(self, state):
+    def need_probability(self, state):
         return 0.0
 
     @abc.abstractmethod
@@ -163,43 +164,60 @@ class Goodbye(BaseAction):
         return [{'goodbye': goodbye_num}]
 
 
-def get_image_urls(search_term):
-    url = 'https://ajax.googleapis.com/ajax/services/search/images?v=1.0&q=%s&start=0&userip=MyIP' % search_term
-    request = urllib2.Request(url, None, {'Referer': 'testing'})
-    response = urllib2.urlopen(request)
-
-    # Get results using JSON
-    results = simplejson.load(response)
-    data_info = results['responseData']['results']
-
-    urls = [u['unescapedUrl'] for u in data_info]
-    return urls
 
 
 class DisplayImage(BaseAction):
+
+    @staticmethod
+    def get_image_urls(search_term):
+        url = 'https://ajax.googleapis.com/ajax/services/search/images?v=1.0&q=%s&start=0&userip=MyIP' % search_term
+        request = urllib2.Request(url, None, {'Referer': 'testing'})
+        response = urllib2.urlopen(request)
+
+        # Get results using JSON
+        results = simplejson.load(response)
+        data_info = results['responseData']['results']
+
+        urls = [u['unescapedUrl'] for u in data_info]
+        return urls
+
     def __init__(self):
         super(DisplayImage, self).__init__()
+        self.last_display = time.time()
+        self.last_state = None
+        self.last_url = None
 
     def compatibility_probability(self, state):
         # TODO detect facts and if any search relevant images
         return 0.0
 
-    def act(self, state):
-        goodbye_num = 0
+    def need_probability(self, state):
         known_mentions = state.belief['known_mentions']
-        if len(known_mentions) > 0:
-            best_mention = known_mentions[0]
-            urls = get_image_urls(best_mention)
-            if len(urls) > 0:
-                url = urls[0]
-            else:
-                # Failed to get image
-                return []
+        if len(known_mentions) == 0:
+            return 0.0
         else:
-            raise ValueError("known_mentions are empty")
-        image_tag = '<img src="%s" alt="%s height="40" width="40">' % (url, best_mention)
+            best_mention = known_mentions[0]
+            urls = DisplayImage.get_image_urls(best_mention)
+            if len(urls) > 0:
+                self.last_url = urls[0]
+                return 1.0
+            else:
+                0.0
 
-        return [{'raw': "Let's see if I can find and Image"}, {'raw': image_tag}]
+    def act(self, state):
+        # default values
+        best_mention, url = 'smiley', 'http://cleverobot.com/static/img/smiley.png'
+        if state == self.last_state:
+            url = self.last_url
+        else:
+            known_mentions = state.belief['known_mentions']
+            if len(known_mentions) > 0:
+                best_mention = known_mentions[0]
+                urls = DisplayImage.get_image_urls(best_mention)
+                if len(urls) > 0:
+                    url = urls[0]
+        image_tag = '<img src="%s" alt="%s height="40" width="40">' % (url, best_mention)
+        return [{'type': 'raw', 'raw': "Let's see if I can find and Image"}, {'type': 'raw', 'raw': image_tag}]
 
 
 class RulebasedPolicy(object):
@@ -223,14 +241,15 @@ class RulebasedPolicy(object):
         The stimuli must vary to keep attention.
         """
         belief = state.belief
+        actions = []
         if self.greeting.compatibility_probability(state) > 0.5:
             return self.greeting.act(state)
-        elif len(belief['known_mentions']) > 0:
-            return self.kbmenttionask.act(state)
+        if self.displayimage.need_probability(state) > 0.5:
+            actions.extend(self.displayimage.act(state))
+        if len(belief['known_mentions']) > 0:
+            actions.extend(self.kbmenttionask.act(state))
         elif len(belief['unknown_mentions']) > 0:
-            return self.elisaask.act(state)
+            actions.extend(self.elisaask.act(state))
         elif len(belief['known_mentions']) == 0 and len(belief['unknown_mentions']) == 0:
-            return self.kbrandomask.act(state)
-        else:
-            self.logger.error('Do not know how to ask questions')
-            return []
+            actions.extend(self.kbrandomask.act(state))
+        return actions
