@@ -1,15 +1,14 @@
 #!/usr/bin/env python
 # encoding: utf-8
-import multiprocessing
-import logging
 import time
 from flask import Flask, render_template
 import flask.ext.socketio as fsocketio
 import argparse
-from cbot.bot import ChatBotConnector, connect_logger, log_loop
+from cbot.bot import ChatBotConnector, log_loop, connect_logger
 from cbot.bot import forwarder_device_start
 import cbot.bot_exceptions as botex
 from multiprocessing import Process
+import zmq.green as zmqg
 
 app = Flask(__name__)
 app.secret_key = 12345  # TODO
@@ -38,12 +37,14 @@ def internal_server_err(e):
 @socketio.on('begin')
 def begin_dialog(msg):
     try:
-        fsocketio.session['chatbot'] = ChatBotConnector(web_response,
+        cbc = fsocketio.session['chatbot'] = ChatBotConnector(web_response,
                                                         args.bot_input,
                                                         args.bot_output,
                                                         args.user_input,
-                                                        args.user_output,)
-        fsocketio.session['chatbot'].start()
+                                                        args.user_output,
+                                                        ctx=ctx)
+        cbc.start()
+        fsocketio.join_room(cbc.id)
         app.logger.debug('ChatbotConnector initiated')
     except botex.BotNotAvailableException as e:  # TODO more specific error handling
         err_msg = {'status': 'error', 'message': 'Chatbot not available'}
@@ -77,17 +78,20 @@ def process_utt(msg):
 @socketio.on('end')
 def end_recognition(msg):
     try:
-        # fsocketio.session['chatbot'].finalize(msg)
-        fsocketio.session['chatbot'].terminate() # TODO
+        cbc = fsocketio.session['chatbot']
+        fsocketio.leave_room(cbc.id)
+        fsocketio.close_room(cbc.id)
+        cbc.terminate()  # TODO
     except botex.BotEndException as e:  # TODO more specific error handling
         app.logger.error('Error on end: %s\n%s', e, msg)
     finally:
         del fsocketio.session['chatbot']
 
 
-def web_response(msg):
-    socketio.emit('socketbot', msg)
-    app.logger.debug('sent: %s', msg)
+def web_response(msg, room_id):
+    socketio.emit('socketbot', msg, room=room_id)
+    print('sent: %s to %s', msg, room_id)
+    app.logger.debug('sent: %s to %s', msg, room_id)
 
 
 if __name__ == '__main__':
@@ -108,16 +112,17 @@ if __name__ == '__main__':
     forwarder_process_bot, forwarder_process_user = None, None
     try:
         log_process.start()
-        # app.logger = get_logger('webserver')
-        # app.logger.info('args: %s', args)
-
-        forwarder_process_bot = forwarder_device_start(args.bot_input,
-                                                       args.bot_output,
-                                                       app.logger)
+        ctx = zmqg.Context()
+        connect_logger(ctx, logger=app.logger)
+        forwarder_process_bot = forwarder_device_start(args.bot_input, args.bot_output, app.logger)
         forwarder_process_user = forwarder_device_start(args.user_input,
                                                         args.user_output,
                                                         app.logger)
-        socketio.run(app, host=args.host, port=args.port)
+        app.logger.info('args: %s', args)
+        socketio.run(app, host=args.host, port=args.port, use_reloader=False)
+    except Exception as e:
+        app.logger.critical("Exception in main app %s", str(e))
+        raise e
     finally:
         if forwarder_process_bot is not None:
             forwarder_process_bot.join(timeout=0.1)
