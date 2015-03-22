@@ -14,17 +14,16 @@ docker-build:
 docker-pull:
 	docker pull oplatek/cleverobot
 
-# docker-stop:  # DOES NOT WORK FIXME, but does not needed really, so far the end is graceful
-# 	docker kill oplatek/cleverobot
-# 	docker rm oplatek/cleverobot
-
+docker-stop:
+	docker kill oplatek/cleverobot
+	docker rm oplatek/cleverobot
 
 nltk_data:
 	export NLTK_DATA=$(CURDIR)/nltk_data;  python scripts/download_nltk_data.py 
 	@echo 'Makefile does not check content of $@ only of exists'
 
 #### run ####
-RUN_BOT=export NLTK_DATA=`pwd`/nltk_data; export PYTHONPATH=`pwd`:$$PYTHONPATH; cd app/cleverobot; python run_bot.py --bot-input 6666 --bot-output 7777 & PID="$$!"; echo "Launched chatbot in background. PID: $$PID" ; python run.py --host $$ADDRESS --port $(PORT) --bot-input 6666 --bot-output 7777 $(DEBUG); echo "Keyboard interrup to chatbot backend $$PID" ; kill -SIGINT $$PID
+RUN_BOT=export NLTK_DATA=`pwd`/nltk_data; export PYTHONPATH=`pwd`/cbot:$$PYTHONPATH; python app/cleverobot/run.py --host $$ADDRESS --port $(PORT) $(DEBUG);
 
 run: nltk_data
 	export ADDRESS=127.0.0.1; $(RUN_BOT)
@@ -32,7 +31,7 @@ docker-run: nltk_data
 	docker run $(VOLUMES) -e ADDRESS=0.0.0.0 -p $(PORT):$(PORT) -i -t --rm oplatek/cleverobot /bin/bash -c '$(RUN_BOT)'
 
 #### tests ####
-UNIT_TEST=export NLTK_DATA=`pwd`/nltk_data; export PYTHONPATH=app:cbot:$$PYTHONPATH; nosetests -e test_factory app; nosetests -e test_factory cbot
+UNIT_TEST=export NLTK_DATA=`pwd`/nltk_data; nosetests -e test_factory app; nosetests -e test_factory cbot
 INTEGRATION_TEST=echo 'TODO integration tests'
 
 test: unit-test integration-test
