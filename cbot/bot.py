@@ -3,7 +3,6 @@
 # from __future__ import unicode_literals
 import multiprocessing
 import os
-import sys
 import zmq.green as zmqg
 import zmq
 from zmq.devices import ProcessDevice
@@ -16,6 +15,7 @@ from kb_data import data
 import dm as dm
 import cbot.kb as kb
 import cbot.nlg as nlg
+from zmq.utils import jsonapi
 
 
 LOGGING_ADDRESS = 'tcp://127.0.0.1:6699'
@@ -90,25 +90,25 @@ class ChatBotConnector(Greenlet):
         self.context = zmqg.Context()
         self.pub2bot = self.context.socket(zmq.PUB)
         self.sub2bot = self.context.socket(zmq.SUB)
-        self.sub2bot.setsockopt(zmq.SUBSCRIBE, b'')
+        self.id = uuid.uuid4()
+        self.sub2bot.setsockopt(zmq.SUBSCRIBE, b'%s' % self.id)
         self.pub2bot.connect('tcp://127.0.0.1:%d' % bot_front_port)
         self.sub2bot.connect('tcp://127.0.0.1:%d' % user_back_port)
         self.poller = zmqg.Poller()
         self.poller.register(self.sub2bot, zmq.POLLIN)
-        self.id = uuid.uuid4()
 
         self.logger = connect_logger(self.context, self.__class__.__name__ + str(self.id))
         self.response = response_cb
         self.should_run = True  # change is based on the messages
 
-        self.bot = ChatBot(bot_back_port, user_front_port)
+        self.bot = ChatBot(bot_back_port, user_front_port, name=str(self.id))
         self.bot.start()
         print 'bot started'
 
     def send(self, msg):
         msg['id'] = str(self.id)
-        self.logger.debug('chatbotconnector %s', msg)
-        self.pub2bot.send_json(msg)
+        self.logger.debug('ChatBotConnector %s', msg)
+        self.pub2bot.send('%s %s' % (self.id, jsonapi.dumps(msg)))
 
     def _run(self):
         self.logger.debug('connector run started')
@@ -118,11 +118,14 @@ class ChatBotConnector(Greenlet):
                 socks = dict(self.poller.poll())
                 self.logger.debug('CONNECTOR AFTER POLL')
                 if self.sub2bot in socks and socks[self.sub2bot] == zmq.POLLIN:
-                    msg = self.sub2bot.recv_json()
-                    self.logger.debug('ChatBotConnector received bot msg %s' % msg)
+                    topic_msg = self.sub2bot.recv()
+                    json0 = topic_msg.find('{')
+                    topic = topic_msg[0:json0].strip()
+                    msg = jsonapi.loads(topic_msg[json0:])
+                    self.logger.debug('ChatBotConnector received bot msg %s', msg)
                     self.response(msg)
         finally:
-            self.logger.debug("ChatbotConnector finished")
+            self.logger.debug("ChatBotConnector finished")
             self.bot.terminate()
 
     def finalize(self, msg):
@@ -163,7 +166,10 @@ class ChatBot(multiprocessing.Process):
         # TODO use json validation
         socks = dict(self.poller.poll())
         if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
-            msg = self.isocket.recv_json()
+            topic_msg = self.isocket.recv()
+            json0 = topic_msg.find('{')
+            topic = topic_msg[0:json0].strip()
+            msg = jsonapi.loads(topic_msg[json0:])
         return msg
 
     def zmq_send(self, utt):
@@ -173,12 +179,12 @@ class ChatBot(multiprocessing.Process):
             'utterance': utt,
         }
         self.logger.debug('Chatbot generated reply\n%s', msg)
-        self.osocket.send_json(msg)
+        self.osocket.send('%s %s' % (self.name, jsonapi.dumps(msg)))
 
     def zmq_init(self):
         self.context = zmq.Context()
         self.isocket = self.context.socket(zmq.SUB)
-        self.isocket.setsockopt(zmq.SUBSCRIBE, b'')
+        self.isocket.setsockopt(zmq.SUBSCRIBE, b'%s' % self.name)
         self.osocket = self.context.socket(zmq.PUB)
         self.isocket.connect('tcp://127.0.0.1:%d' % self.input_port)
         self.osocket.connect('tcp://127.0.0.1:%d' % self.output_port)
