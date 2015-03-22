@@ -149,7 +149,7 @@ class Greeting(BaseAction):
 
     def act(self, state):
         greeting_num = 0
-        return [{'greeting': greeting_num}]
+        return [{'type': 'greeting', 'greeting_number': greeting_num}]
 
 
 class Goodbye(BaseAction):
