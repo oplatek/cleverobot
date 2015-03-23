@@ -6,6 +6,9 @@
 [![Coverage Status](https://coveralls.io/repos/oplatek/cleverobot/badge.svg)](https://coveralls.io/r/oplatek/cleverobot)
 
 ## Style and libraries used
+* Flask-SocketIO for webapp
+   - Each user has private room with its own ChatBot
 * PyZMQ:
-    * zmq.green for webapp
+    * zmq.green for webapp ChatBotConnector, and zmq for ChatBot
+    * Each ChatBot runs in separate process and receive and sends messages to webapp user session via _publish/subscribe_ device 
 
