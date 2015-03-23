@@ -7,7 +7,7 @@
 
 ## Style and libraries used
 * Flask-SocketIO for webapp
-   - Each user has private room with its own ChatBot
+   - Each user has private room with his/her own ChatBot
 * PyZMQ:
     * zmq.green for webapp ChatBotConnector, and zmq for ChatBot
     * Each ChatBot runs in separate process and receive and sends messages to webapp user session via _publish/subscribe_ device 
