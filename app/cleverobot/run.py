@@ -1,15 +1,18 @@
 #!/usr/bin/env python
 # encoding: utf-8
+from __future__ import unicode_literals
 import logging
 import time
-from flask import Flask, render_template, current_app, request
+from flask import Flask, render_template, current_app, request, jsonify
 import flask.ext.socketio as fsocketio
 import argparse
-from cbot.bot import ChatBotConnector, log_loop, connect_logger
+from zmq.utils import jsonapi
+from cbot.bot import ChatBotConnector, log_loop, connect_logger, topic_msg_to_json, LOGGING_ADDRESS
 from cbot.bot import forwarder_device_start
 import cbot.bot_exceptions as botex
 from multiprocessing import Process
 import zmq.green as zmqg
+import zmq
 
 
 app = Flask(__name__)
@@ -33,6 +36,28 @@ def log_response(res):
 def index():
     app.logger.debug('Rendering index')
     return render_template('index.html')
+
+
+@app.route('/stats/<chatbot_id>')
+def request_stats(chatbot_id):
+    context = zmqg.Context()
+    current_app.logger.debug('sent stats req to %s' % chatbot_id)
+    async_stat_sub = context.socket(zmq.SUB)
+    async_stat_sub.setsockopt_string(zmq.SUBSCRIBE, 'stat_%s' % chatbot_id)
+    async_stat_sub.connect('tcp://127.0.0.1:%d' % args.user_output)
+    poller = zmqg.Poller()
+    poller.register(async_stat_sub, zmqg.POLLIN)
+    time.sleep(0.1)
+    pub2bot.send_string('stat_%s request' % chatbot_id)
+    socks = dict(poller.poll(timeout=2000))
+    app.logger.debug('sockets %s' % socks)
+    if async_stat_sub in socks and socks[async_stat_sub] == zmqg.POLLIN:
+        topic, msg = topic_msg_to_json(async_stat_sub.recv())
+        assert topic == 'stat_%s' % chatbot_id
+        app.logger.debug('sending back requested stats %s' % str(msg))
+        return jsonify(msg), 200
+    else:
+        return 'No content for ChatBot %s' % id, 202
 
 
 @app.errorhandler(404)
@@ -59,14 +84,14 @@ def begin_dialog(msg):
         cbc.start()
         fsocketio.join_room(cbc.id)
         app.logger.debug('ChatbotConnector initiated')
-    except botex.BotNotAvailableException as e:  # TODO more specific error handling
+    except botex.BotNotAvailableException as exp:
         err_msg = {'status': 'error', 'message': 'Chatbot not available'}
         socketio.emit('server_error', err_msg)
-        app.logger.error('Error: %s\nInput config %s\nSent to client %s', e, msg, err_msg)
-    except botex.BotSendException as e:
+        app.logger.error('Error: %s\nInput config %s\nSent to client %s', exp, msg, err_msg)
+    except botex.BotSendException as exp:
         err_msg = {'status': 'error', 'message': 'Chatbot cannot send messages'}
         socketio.emit('server_error', err_msg)
-        app.logger.error('Error: %s\nSent to client %s', e, err_msg)
+        app.logger.error('Error: %s\nSent to client %s', exp, err_msg)
         del fsocketio.session['chatbot']
 
 
@@ -74,12 +99,12 @@ def begin_dialog(msg):
 def process_utt(msg):
     if 'chatbot' in fsocketio.session:
         try:
-            msg['time'] = time.time()
-            fsocketio.session['chatbot'].send(msg)
-        except botex.BotSendException as e:  # TODO more specific error handling
+            cbc = fsocketio.session['chatbot']
+            cbc.send(msg)
+        except botex.BotSendException as exp:
             err_msg = {'status': 'error', 'message': 'Chatbot lost'}
             socketio.emit('server_error', err_msg)
-            app.logger.error('Error: %s\nInput config %s\nSent to client %s', e, msg, err_msg)
+            app.logger.error('Error: %s\nInput config %s\nSent to client %s', exp, msg, err_msg)
             del fsocketio.session['chatbot']
     else:
         err_msg = {'status': 'error', 'message': 'Internal server error'}
@@ -95,8 +120,8 @@ def end_recognition(msg):
         fsocketio.leave_room(cbc.id)
         fsocketio.close_room(cbc.id)
         cbc.terminate()  # TODO
-    except botex.BotEndException as e:  # TODO more specific error handling
-        app.logger.error('Error on end: %s\n%s', e, msg)
+    except botex.BotEndException as exp:
+        app.logger.error('Error on end: %s\n%s', exp, msg)
     finally:
         del fsocketio.session['chatbot']
 
@@ -134,6 +159,10 @@ if __name__ == '__main__':
         forwarder_process_user = forwarder_device_start(args.user_input,
                                                         args.user_output,
                                                         app.logger)
+
+        pub2bot = ctx.socket(zmq.PUB)
+        pub2bot.connect('tcp://127.0.0.1:%d' % args.bot_input)
+
         app.logger.info('args: %s', args)
         socketio.run(app, host=args.host, port=args.port, use_reloader=False)
     except Exception as e:

@@ -41,7 +41,7 @@ class ChatBotRunLoopTest(unittest.TestCase):
     def setUp(self):
         random.seed(198711)
         self.sent = []
-        self.bot = ChatBot(input_port=-6, output_port=-66)
+        self.bot = ChatBot(input_port=-6, output_port=-66, name='test chatbot')
         self.run = True
         self.i = 0
         self.bot.should_run = self.should_run
@@ -63,7 +63,8 @@ class LoggerTest(unittest.TestCase):
         log_process.start()
 
         ctx = zmq.Context()
-        logger = connect_logger(ctx, 'test')
+        logger = logging.getLogger('')
+        connect_logger(logger, ctx)
         time.sleep(0.2)
         logger.info('Info test')
         time.sleep(0.1)
@@ -128,7 +129,7 @@ class ChatBotTest(unittest.TestCase):
         self.poller.register(self.sub_socket, zmq.POLLIN)
         self.logger_process = Process(target=log_loop)
         self.logger_process.start()
-        self.b = ChatBot(self.bot_back, self.user_front)
+        self.b = ChatBot(self.bot_back, self.user_front, 'test chatbot')
         self.b.start()
         print 'Initiation finished sleeping for a while'
         time.sleep(3.0)

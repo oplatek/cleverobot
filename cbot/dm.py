@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # encoding: utf-8
+from __future__ import unicode_literals
 import abc
 import random
 import urllib2
 import simplejson
 import time
-import cbot.bot
 from nlg import Nlg
 
 
@@ -168,7 +168,10 @@ class DisplayImage(BaseAction):
 
     @staticmethod
     def get_image_urls(search_term):
-        url = 'https://ajax.googleapis.com/ajax/services/search/images?v=1.0&q=%s&start=0&userip=MyIP' % search_term
+        assert isinstance(search_term, tuple) and len(search_term) == 3
+        search_term = ' '.join([t for t in search_term if t is not None]).replace(' ', '%20')
+        url = "https://ajax.googleapis.com/ajax/services/search/images?v=1.0&q=%s&start=0&userip=MyIP" % search_term
+        print url
         request = urllib2.Request(url, None, {'Referer': 'testing'})
         response = urllib2.urlopen(request)
 

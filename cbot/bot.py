@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
-# from __future__ import unicode_literals
+from __future__ import unicode_literals
 import multiprocessing
-import os
 import zmq.green as zmqg
 import zmq
 from zmq.devices import ProcessDevice
@@ -19,6 +18,13 @@ from zmq.utils import jsonapi
 
 
 LOGGING_ADDRESS = 'tcp://127.0.0.1:6699'
+
+
+def topic_msg_to_json(topic_msg):
+    json0 = topic_msg.find('{')
+    topic = topic_msg[0:json0].strip()
+    msg = jsonapi.loads(topic_msg[json0:])
+    return topic, msg
 
 
 def log_from_subscriber(sub):
@@ -39,7 +45,7 @@ def log_loop(level=logging.DEBUG, address=LOGGING_ADDRESS, format='%(asctime)s %
     ctx = zmq.Context()
     sub = ctx.socket(zmq.SUB)
     sub.bind(address)
-    sub.setsockopt(zmq.SUBSCRIBE, b'')
+    sub.setsockopt_string(zmq.SUBSCRIBE, '')
 
     logging.basicConfig(level=level, format=format, filename='common.log')
     console = logging.StreamHandler()
@@ -79,6 +85,7 @@ def forwarder_device_start(frontend_port, backend_port, logger=None):
 
 
 class ChatBotConnector(Greenlet):
+
     def __init__(self, response_cb, bot_front_port, bot_back_port,
                  user_front_port, user_back_port, ctx=None):
         super(ChatBotConnector, self).__init__()
@@ -89,7 +96,7 @@ class ChatBotConnector(Greenlet):
         self.pub2bot = self.context.socket(zmq.PUB)
         self.sub2bot = self.context.socket(zmq.SUB)
         self.id = uuid.uuid4()
-        self.sub2bot.setsockopt(zmq.SUBSCRIBE, b'%s' % self.id)
+        self.sub2bot.setsockopt_string(zmq.SUBSCRIBE, '%s' % self.id)
         self.pub2bot.connect('tcp://127.0.0.1:%d' % bot_front_port)
         self.sub2bot.connect('tcp://127.0.0.1:%d' % user_back_port)
         self.poller = zmqg.Poller()
@@ -100,13 +107,14 @@ class ChatBotConnector(Greenlet):
         self.response = response_cb
         self.should_run = True  # change is based on the messages
 
-        self.bot = ChatBot(bot_back_port, user_front_port, name=str(self.id))
+        self.bot = ChatBot(bot_back_port, user_front_port, str(self.id))
         self.bot.start()
 
     def send(self, msg):
         msg['id'] = str(self.id)
+        msg['time'] = time.time()
         self.logger.debug('ChatBotConnector %s', msg)
-        self.pub2bot.send('%s %s' % (self.id, jsonapi.dumps(msg)))
+        self.pub2bot.send_string('%s %s' % (self.id, jsonapi.dumps(msg)))
 
     def _run(self):
         self.logger.debug('connector run started')
@@ -116,10 +124,7 @@ class ChatBotConnector(Greenlet):
                 socks = dict(self.poller.poll())
                 self.logger.debug('ChatBotConnector after poll')
                 if self.sub2bot in socks and socks[self.sub2bot] == zmq.POLLIN:
-                    topic_msg = self.sub2bot.recv()
-                    json0 = topic_msg.find('{')
-                    topic = topic_msg[0:json0].strip()
-                    msg = jsonapi.loads(topic_msg[json0:])
+                    _, msg = topic_msg_to_json(self.sub2bot.recv())
                     self.logger.debug('ChatBotConnector %s received bot msg %s', self.id, msg)
                     self.response(msg, self.id)
         finally:
@@ -143,7 +148,7 @@ class ChatBot(multiprocessing.Process):
     of the chatbot.
     """
 
-    def __init__(self, input_port, output_port, name='ChatBot'):
+    def __init__(self, input_port, output_port, name):
         super(ChatBot, self).__init__()
         self.name = name
 
@@ -152,41 +157,52 @@ class ChatBot(multiprocessing.Process):
 
         self.timeout = 0.2
         self.should_run = lambda: True
-        self.send_msg = self.zmq_send
-        self.receive_msg = self.zmq_receive
 
         self.state = dm.State()
 
         self.logger, self.kb, self.policy, self.nlg = None, None, None, None
 
-    def zmq_receive(self):
+    def receive_msg(self):
         # TODO use json validation
-        socks = dict(self.poller.poll())
-        if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
-            topic_msg = self.isocket.recv()
-            json0 = topic_msg.find('{')
-            topic = topic_msg[0:json0].strip()
-            msg = jsonapi.loads(topic_msg[json0:])
+        msg = None
+        while msg is None:
+            socks = dict(self.poller.poll())
+            if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
+                _, msg = topic_msg_to_json(self.isocket.recv())
+                self.logger.debug('Chatbot %s received message\n%s', self.name, msg)
+            if self.req_stat in socks and socks[self.req_stat] == zmq.POLLIN:
+                _, stat_req = self.req_stat.recv().split()
+                assert stat_req == 'request', 'stat_req %s' % stat_req
+                stats = {
+                    'time': time.time(),
+                    'history_len': len(self.state.history)
+                }
+                self.logger.debug('ChatBot %s received stats request', self.name)
+                self.osocket.send_string('stat_%s %s' % (self.name, jsonapi.dumps(stats)))
         return msg
 
-    def zmq_send(self, utt):
+    def send_msg(self, utt):
         msg = {
             'time': time.time(),
             'user': self.__class__.__name__ + self.name,
             'utterance': utt,
         }
-        self.logger.debug('Chatbot generated reply\n%s', msg)
-        self.osocket.send('%s %s' % (self.name, jsonapi.dumps(msg)))
+        self.logger.debug('Chatbot %s generated reply\n%s', self.name, msg)
+        self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
 
     def zmq_init(self):
         self.context = zmq.Context()
         self.isocket = self.context.socket(zmq.SUB)
-        self.isocket.setsockopt(zmq.SUBSCRIBE, b'%s' % self.name)
+        self.isocket.setsockopt_string(zmq.SUBSCRIBE, '%s' % self.name)
         self.osocket = self.context.socket(zmq.PUB)
+        self.req_stat = self.context.socket(zmq.SUB)
+        self.req_stat.setsockopt_string(zmq.SUBSCRIBE, 'stat_%s' % self.name)
         self.isocket.connect('tcp://127.0.0.1:%d' % self.input_port)
+        self.req_stat.connect('tcp://127.0.0.1:%d' % self.input_port)
         self.osocket.connect('tcp://127.0.0.1:%d' % self.output_port)
         self.poller = zmq.Poller()
         self.poller.register(self.isocket, zmq.POLLIN)
+        self.poller.register(self.req_stat, zmq.POLLIN)
 
     def run(self):
         self.zmq_init()
@@ -211,30 +227,25 @@ class ChatBot(multiprocessing.Process):
     def chatbot_loop(self):
         self.logger.debug('entering loop')
         while self.should_run():
-            self.logger.debug('Chatbot BEFORE POLL')
             msg = self.receive_msg()
-            self.logger.debug('Chatbot AFTER POLL')
-            if 'user' not in msg or 'utterance' not in msg:
-                self.logger.error('user is not in msg: skipping message')
+            if msg['utterance'].lower() == 'your id' or msg['utterance'].lower() == 'your id, please!':
+                self.send_msg(self.name)
                 continue
-            if msg['user'].startswith('human'):
-                self.logger.info('Chatbot %s received message from human\n%s', self.name, msg)
-                known_mentions, unknown_mentions = self.kb.parse_to_kb(msg['utterance'], self.kb)
-                self.state.update_state(msg, known_mentions, unknown_mentions)
-                actions = self.policy.act(self.state, self.kb)
-                start = time.time()
-                while len(actions) > 0 and (time.time() - start) < self.timeout:
-                    self.logger.debug(actions)
-                    a = actions.pop(0)
-                    # one may want to register other surface realisations than NLG
-                    response = self.nlg.action2lang(a)
-                    if response is None:
-                        self.logger.debug('Action %s does not triggered response to user', a)
-                    else:
-                        self.logger.debug('Action %s triggered response %s', a, response)
-                        self.send_msg(response)
-            else:
-                self.logger.error('Unrecognized user type')
+            known_mentions, unknown_mentions = self.kb.parse_to_kb(msg['utterance'], self.kb)
+            self.state.history.append(self.state.belief)
+            self.state.update_state(msg, known_mentions, unknown_mentions)
+            actions = self.policy.act(self.state, self.kb)
+            start = time.time()
+            while len(actions) > 0 and (time.time() - start) < self.timeout:
+                self.logger.debug(actions)
+                a = actions.pop(0)
+                # one may want to register other surface realisations than NLG
+                response = self.nlg.action2lang(a)
+                if response is None:
+                    self.logger.debug('Action %s does not triggered response to user', a)
+                else:
+                    self.logger.debug('Action %s triggered response %s', a, response)
+                    self.send_msg(response)
 
 
 if __name__ == '__main__':
