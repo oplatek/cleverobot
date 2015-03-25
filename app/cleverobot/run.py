@@ -2,6 +2,7 @@
 # encoding: utf-8
 from __future__ import unicode_literals
 import logging
+import os
 import time
 from flask import Flask, render_template, current_app, request, jsonify
 import flask.ext.socketio as fsocketio
@@ -13,6 +14,7 @@ import cbot.bot_exceptions as botex
 from multiprocessing import Process
 import zmq.green as zmqg
 import zmq
+import app.cleverobot as capp
 
 
 app = Flask(__name__)
@@ -164,10 +166,13 @@ if __name__ == '__main__':
         pub2bot.connect('tcp://127.0.0.1:%d' % args.bot_input)
 
         app.logger.info('args: %s', args)
-        socketio.run(app, host=args.host, port=args.port, use_reloader=False)
-    except Exception as e:
-        app.logger.critical("Exception in main app %s", str(e))
-        raise e
+        socketio.run(app, host=args.host, port=args.port, use_reloader=False,)
+
+        # use nginx instead
+        # key_dir_path = os.path.realpath(os.path.join(os.path.dirname(capp.__path__[0]), 'keys'))
+        # key_path = os.path.join(key_dir_path, 'exploited.key')
+        # cert_path = os.path.join(key_dir_path, 'exploited.crt')
+        # socketio.run(app, host=args.host, port=args.port, use_reloader=False, keyfile=key_path, certfile=cert_path)
     finally:
         if forwarder_process_bot is not None:
             forwarder_process_bot.join(timeout=0.1)

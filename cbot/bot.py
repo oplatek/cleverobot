@@ -228,9 +228,16 @@ class ChatBot(multiprocessing.Process):
         self.logger.debug('entering loop')
         while self.should_run():
             msg = self.receive_msg()
+
+            # hacks start {{{
             if msg['utterance'].lower() == 'your id' or msg['utterance'].lower() == 'your id, please!':
                 self.send_msg(self.name)
                 continue
+            if len(self.state.history) == 15:
+                self.send_msg("Thanks for chatting with me! Finally someone talkative.")
+
+            # }}} hacks end
+
             known_mentions, unknown_mentions = self.kb.parse_to_kb(msg['utterance'], self.kb)
             self.state.history.append(self.state.belief)
             self.state.update_state(msg, known_mentions, unknown_mentions)
