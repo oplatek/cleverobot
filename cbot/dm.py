@@ -164,8 +164,6 @@ class Goodbye(BaseAction):
         return [{'goodbye': goodbye_num}]
 
 
-
-
 class DisplayImage(BaseAction):
 
     @staticmethod

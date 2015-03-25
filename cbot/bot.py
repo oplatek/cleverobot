@@ -41,7 +41,7 @@ def log_loop(level=logging.DEBUG, address=LOGGING_ADDRESS, format='%(asctime)s %
     sub.bind(address)
     sub.setsockopt(zmq.SUBSCRIBE, b'')
 
-    logging.basicConfig(level=level, format=format, filename='test_bot.log')
+    logging.basicConfig(level=level, format=format, filename='common.log')
     console = logging.StreamHandler()
     console.setLevel(logging.DEBUG)
     console.setFormatter(logging.Formatter(format))
@@ -51,24 +51,17 @@ def log_loop(level=logging.DEBUG, address=LOGGING_ADDRESS, format='%(asctime)s %
         log_from_subscriber(sub)
 
 
-def connect_logger(context, name=None, logger=None, address=LOGGING_ADDRESS):
+def connect_logger(logger, context, name=None, address=LOGGING_ADDRESS):
     """
     Create logger for zmq.context() which need to taken from process of intended use.
     :return: logging.Logger
     """
     pub = context.socket(zmq.PUB)
-    if logger is None:
-        if name is None:
-            name = __name__ + str(os.getpid())
-        pub.connect(address)
-        connected_logger = logging.getLogger(name)
-    else:
-       connected_logger = logger
+    pub.connect(address)
     handler = PUBHandler(pub)
-    connected_logger.addHandler(handler)
+    logger.addHandler(handler)
     # Let the logs be filter at the listener.
-    connected_logger.setLevel(logging.DEBUG)
-    return connected_logger
+    logger.setLevel(logging.DEBUG)
 
 
 def forwarder_device_start(frontend_port, backend_port, logger=None):
@@ -102,7 +95,8 @@ class ChatBotConnector(Greenlet):
         self.poller = zmqg.Poller()
         self.poller.register(self.sub2bot, zmq.POLLIN)
 
-        self.logger = connect_logger(self.context, name=self.__class__.__name__ + str(self.id))
+        self.logger = logging.getLogger(self.__class__.__name__ + str(self.id))
+        connect_logger(self.logger, self.context)
         self.response = response_cb
         self.should_run = True  # change is based on the messages
 
@@ -196,7 +190,9 @@ class ChatBot(multiprocessing.Process):
 
     def run(self):
         self.zmq_init()
-        self.logger = connect_logger(self.context, self.__class__.__name__ + str(self.name))
+        self.logger = logging.getLogger(self.__class__.__name__ + str(self.name))
+        # TODO add handler for storing each session
+        connect_logger(self.logger, self.context)
 
         self.logger.debug('Runs with input_port: %d' % self.input_port)
         self.logger.debug('Runs with output_port: %d' % self.output_port)

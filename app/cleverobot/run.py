@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # encoding: utf-8
+import logging
 import time
-from flask import Flask, render_template
+from flask import Flask, render_template, current_app, request
 import flask.ext.socketio as fsocketio
 import argparse
 from cbot.bot import ChatBotConnector, log_loop, connect_logger
@@ -10,9 +11,21 @@ import cbot.bot_exceptions as botex
 from multiprocessing import Process
 import zmq.green as zmqg
 
+
 app = Flask(__name__)
 app.secret_key = 12345  # TODO
 socketio = fsocketio.SocketIO(app)
+
+
+@app.before_request
+def log_request():
+    current_app.logger.debug('Request: %s %s', request.method, request.url)
+
+
+@app.after_request
+def log_response(res):
+    current_app.logger.debug('Response: %s', res.status_code)
+    return res
 
 
 @app.route('/index')
@@ -113,7 +126,10 @@ if __name__ == '__main__':
     try:
         log_process.start()
         ctx = zmqg.Context()
-        connect_logger(ctx, logger=app.logger)
+        connect_logger(app.logger, ctx)
+        werkzeug_logger = logging.getLogger('werkzeug')
+        connect_logger(werkzeug_logger, ctx)
+
         forwarder_process_bot = forwarder_device_start(args.bot_input, args.bot_output, app.logger)
         forwarder_process_user = forwarder_device_start(args.user_input,
                                                         args.user_output,
