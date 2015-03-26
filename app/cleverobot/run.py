@@ -173,6 +173,9 @@ if __name__ == '__main__':
         # key_path = os.path.join(key_dir_path, 'exploited.key')
         # cert_path = os.path.join(key_dir_path, 'exploited.crt')
         # socketio.run(app, host=args.host, port=args.port, use_reloader=False, keyfile=key_path, certfile=cert_path)
+    except Exception as exp:
+        app.logger.exception(exp)
+        raise exp
     finally:
         if forwarder_process_bot is not None:
             forwarder_process_bot.join(timeout=0.1)
