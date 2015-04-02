@@ -141,14 +141,14 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--debug', dest='debug', action='store_true')
     parser.add_argument('--no-debug', dest='debug', action='store_false')
     parser.set_defaults(debug=True)
-    parser.add_argument('-l', '--log', default='cleverbot.log')
+    parser.add_argument('-l', '--log', default='cleverobot.log')
     parser.add_argument('--bot-input', type=int, default=6666)
     parser.add_argument('--bot-output', type=int, default=7777)
     parser.add_argument('--user-input', type=int, default=8888)
     parser.add_argument('--user-output', type=int, default=9999)
     args = parser.parse_args()
 
-    log_process = Process(target=log_loop)
+    log_process = Process(target=log_loop, kwargs={'log_name': args.log})
     forwarder_process_bot, forwarder_process_user = None, None
     try:
         log_process.start()
@@ -173,9 +173,9 @@ if __name__ == '__main__':
         # key_path = os.path.join(key_dir_path, 'exploited.key')
         # cert_path = os.path.join(key_dir_path, 'exploited.crt')
         # socketio.run(app, host=args.host, port=args.port, use_reloader=False, keyfile=key_path, certfile=cert_path)
-    except Exception as exp:
-        app.logger.exception(exp)
-        raise exp
+    except Exception, e:
+        app.logger.error("Top level exception", exc_info=True)
+        raise
     finally:
         if forwarder_process_bot is not None:
             forwarder_process_bot.join(timeout=0.1)
