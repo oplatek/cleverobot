@@ -59,7 +59,7 @@ def request_stats(chatbot_id):
         app.logger.debug('sending back requested stats %s' % str(msg))
         return jsonify(msg), 200
     else:
-        return 'No content for ChatBot %s' % id, 202
+        return jsonify({'response': 'Chatbot %s unknown' % chatbot_id}), 200
 
 
 @app.errorhandler(404)
