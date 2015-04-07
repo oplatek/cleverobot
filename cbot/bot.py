@@ -190,7 +190,7 @@ class ChatBot(multiprocessing.Process):
         # Normal conversation
         if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
             _, msg = topic_msg_to_json(self.isocket.recv())
-            self.logger.info('%s\n', msg)
+            self.logger.info('%s,', jsonapi.dumps(msg))
 
             # hacks TODO move to hancrafted - control policy
             if msg['utterance'].lower() == 'your id' or msg['utterance'].lower() == 'your id, please!':
@@ -218,10 +218,10 @@ class ChatBot(multiprocessing.Process):
         msg = {
             'utterance': utt,
             'time': time.time(),
-            'user': self.__class__.__name__ + self.name,
+            'user': self.__class__.__name__,
             'session': self.name,
         }
-        self.logger.info('%s\n', msg)
+        self.logger.info('%s,', jsonapi.dumps(msg))
         self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
 
     def zmq_init(self):
