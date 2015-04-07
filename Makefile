@@ -54,4 +54,4 @@ get-production-logs:
 # 	scp -C root@147.251.253.222:/var/cache/openafs/code/cleverobot/cbot/logs/*.log oplatek@shrek.ms.mff.cuni.cz:/net/projects/vystadial/data/chat/
 
 logs2ufal:
-	scp -C -p cbot/logs/*.log oplatek@shrek.ms.mff.cuni.cz:/net/projects/vystadial/data/chat/
+	scp -C -p cbot/logs/*.log oplatek@shrek.ms.mff.cuni.cz:/net/projects/vystadial/data/chat/new

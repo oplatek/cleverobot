@@ -39,7 +39,7 @@ def create_local_logging_handler(name):
         if e.errno != errno.EEXIST:
             raise
     logger.setLevel(logging.DEBUG)
-    h = logging.FileHandler(os.path.join(log_dir, name), mode='w', delay=True)
+    h = logging.FileHandler(os.path.join(log_dir, name + '.log'), mode='w', delay=True)
     h.setLevel(logging.INFO)
     return h
 
@@ -132,8 +132,9 @@ class ChatBotConnector(Greenlet):
         self.bot.start()
 
     def send(self, msg):
-        msg['id'] = str(self.id)
+        msg['user'] = 'human'
         msg['time'] = time.time()
+        msg['session'] = str(self.id)
         self.logger.debug('ChatBotConnector %s', msg)
         self.pub2bot.send_string('%s %s' % (self.id, jsonapi.dumps(msg)))
 
@@ -189,7 +190,7 @@ class ChatBot(multiprocessing.Process):
         # Normal conversation
         if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
             _, msg = topic_msg_to_json(self.isocket.recv())
-            self.logger.info('Human %s\n:\t%s\n', self.name, msg)
+            self.logger.info('%s\n', msg)
 
             # hacks TODO move to hancrafted - control policy
             if msg['utterance'].lower() == 'your id' or msg['utterance'].lower() == 'your id, please!':
@@ -215,11 +216,12 @@ class ChatBot(multiprocessing.Process):
 
     def send_msg(self, utt):
         msg = {
+            'utterance': utt,
             'time': time.time(),
             'user': self.__class__.__name__ + self.name,
-            'utterance': utt,
+            'session': self.name,
         }
-        self.logger.info('Chatbot %s\n:\t%s\n', self.name, msg)
+        self.logger.info('%s\n', msg)
         self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
 
     def zmq_init(self):
