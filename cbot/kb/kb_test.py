@@ -4,8 +4,9 @@ from __future__ import unicode_literals
 import unittest
 import tempfile
 import os
-import kb
 import pickle
+
+from cbot.kb import kb
 
 
 class KbTest(unittest.TestCase):

@@ -2,21 +2,25 @@
 # encoding: utf-8
 from __future__ import unicode_literals
 import multiprocessing
+import time
+import logging
+import uuid
+import os
+import errno
+
 import zmq.green as zmqg
 import zmq
 from zmq.devices import ProcessDevice
-import time
-import logging
 from gevent import Greenlet
-import uuid
 from zmq.log.handlers import PUBHandler
-from kb_data import data
-import dm as dm
+from zmq.utils import jsonapi
+
+from cbot.kb.kb_data import data
+from cbot.dm.state import SimpleTurnState
+from cbot.dm.policy import RuleBasedPolicy
 import cbot.kb as kb
 import cbot.nlg as nlg
-from zmq.utils import jsonapi
-import os
-import errno
+from cbot.parse.pos import PerceptronTagger
 
 
 LOGGING_ADDRESS = 'tcp://127.0.0.1:6699'
@@ -180,9 +184,8 @@ class ChatBot(multiprocessing.Process):
         self.timeout = 0.2
         self.should_run = True
 
-        self.state = dm.State()
-
-        self.logger, self.kb, self.policy, self.nlg = None, None, None, None
+        self.state = SimpleTurnState()
+        self.logger, self.kb, self.policy, self.nlg, self.pos_tagger = None, None, None, None, None
 
     def receive_msg(self):
         # TODO use json validation
@@ -215,14 +218,15 @@ class ChatBot(multiprocessing.Process):
             return None
 
     def send_msg(self, utt):
-        msg = {
-            'utterance': utt,
-            'time': time.time(),
-            'user': self.__class__.__name__,
-            'session': self.name,
-        }
-        self.logger.info('%s,', jsonapi.dumps(msg))
-        self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
+        if utt is not None:
+            msg = {
+                'utterance': utt,
+                'time': time.time(),
+                'user': self.__class__.__name__,
+                'session': self.name,
+            }
+            self.logger.info('%s,', jsonapi.dumps(msg))
+            self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
 
     def zmq_init(self):
         self.context = zmq.Context()
@@ -253,7 +257,7 @@ class ChatBot(multiprocessing.Process):
         self.kb.add_triplets(data)
         self.logger.debug('KB loaded')
 
-        self.policy = dm.RulebasedPolicy(self.kb, self.logger)
+        self.policy = RuleBasedPolicy(self.kb, self.logger)
         self.nlg = nlg.Nlg(self.logger)
         self.logger.debug('All components initiated')
 
@@ -265,25 +269,17 @@ class ChatBot(multiprocessing.Process):
             msg = self.receive_msg()
             if msg is None:
                 continue
-
-            known_mentions, unknown_mentions = self.kb.parse_to_kb(msg['utterance'], self.kb)
-            self.state.history.append(self.state.belief)
-            self.state.update_state(msg, known_mentions, unknown_mentions)
-            actions = self.policy.act(self.state, self.kb)
+            self.state.update_state(msg)
+            action = self.policy.act(self.state, self.kb)
             start = time.time()
-            while len(actions) > 0 and (time.time() - start) < self.timeout:
-                self.logger.debug(actions)
-                a = actions.pop(0)
-                # one may want to register other surface realisations than NLG
-                response = self.nlg.action2lang(a)
-                if response is None:
-                    self.logger.debug('Action %s does not triggered response to user', a)
-                else:
-                    self.logger.debug('Action %s triggered response %s', a, response)
-                    self.send_msg(response)
+            while action is not None and (time.time() - start) < self.timeout:
+                response = action.act()
+                self.logger.debug('Action %s triggered response %s', action, response)
+                self.send_msg(response)
 
 
 if __name__ == '__main__':
+    """Chatbot demo without zmq and multiprocessing."""
     bot = ChatBot(input_port=-6, output_port=-66)
 
     def get_msg():

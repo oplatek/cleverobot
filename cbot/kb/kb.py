@@ -2,11 +2,8 @@
 # encoding: utf-8
 from __future__ import unicode_literals
 
-# require POS trained model
-from parse.pos import PerceptronTagger
-
 import pickle
-from kb_data import data
+from cbot.kb.kb_data import data
 from collections import defaultdict
 
 
@@ -15,11 +12,8 @@ class KnowledgeBase(object):
         self._trip = defaultdict(set)  # set of triples (a, r, c)
         self._rtrip = defaultdict(set)  # the same triples reverse (c, r, a)
 
-        self.tagger = PerceptronTagger()
-
     def load_default_models(self):
         self.add_triplets(data)
-        self.tagger.load()
 
     def get_nodes(self):
         return self._trip.keys()
@@ -69,13 +63,12 @@ class KnowledgeBase(object):
             else:
                 self.add_triplets(triples)
 
-    def parse_to_kb(self, utterance, kb):
+    def known_mentions(self, tokens, tags):
         """TODO also use time and user specific information.
         Work with negation for start just store it when negation detected (let ask user for the focus).
         """
 
-        tokens = utterance.strip().split()
-        tags = self.tagger.tag(tokens)
+        TODO
         phrases = generate_subseqs(tokens)
         facts_in_sentence = []
         for p, start, end in phrases:
@@ -101,12 +94,7 @@ class KnowledgeBase(object):
             else:
                 known_mentions.extend(compat_facts)
 
-        unknown_mentions = []
-        noun_pairs_keys = [(i, j) for i, j in zip(nouns.keys(), nouns.keys()) if i < j]
-        for i, j in noun_pairs_keys:
-            unknown_mentions.extend([(nouns[i], verbs[k], nouns[j]) for k in verbs.keys() if i < k < j])
-
-        return known_mentions, unknown_mentions
+        return known_mentions
 
 
 def generate_subseqs(s):

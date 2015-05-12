@@ -3,6 +3,7 @@
 # source: https://github.com/sloria/textblob-aptagger/blob/master/textblob_aptagger/taggers.py
 # MIT license
 from __future__ import division, unicode_literals
+from itertools import izip
 import os
 import random
 import pickle
@@ -14,6 +15,29 @@ from dependencygraph import DependencyGraph, Node
 
 START = ['-START-', '-START2-']
 END = ['-END-', '-END2-']
+
+# Use universal dependencies pos - assumed elsewhere
+# See http://universaldependencies.github.io/docs/
+POS = {
+    'adj': 'adjective',
+    'ADP': 'adposition',
+    'ADV': 'adverb',
+    'AUX': 'auxiliary verb',
+    'CONJ': 'coordinating conjunction',
+    'DET': 'determiner',
+    'INTJ': 'interjection',
+    'NOUN': 'noun',
+    'NUM': 'numeral',
+    'PART': 'particle',
+    'PRON': 'pronoun',
+    'PROPN': 'proper noun',
+    'PUNCT': 'punctuation',
+    'SCONJ': 'subordinating conjunction',
+    'SYM': 'symbol',
+    'VERB': 'verb',
+    'X': 'other',
+}
+POSR = {y:x for x, y in POS.iteritems()}
 
 
 class DefaultList(list):
@@ -31,8 +55,8 @@ class DefaultList(list):
 
 
 class PerceptronTagger(object):
-    '''Greedy Averaged Perceptron tagger'''
-    model_loc = os.path.join(os.path.dirname(__file__), 'tagger.pickle')  # TODO make it symetric for store/load
+    """Greedy Averaged Perceptron tagger"""
+    model_loc = os.path.join(os.path.dirname(__file__), 'tagger.pickle')  # TODO make it symmetric for store/load
 
     def __init__(self, classes=None, load=True):
         self.tagdict = {}

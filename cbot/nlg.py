@@ -61,9 +61,9 @@ class Nlg(object):
         if about[0] is not None and about[1] is None and about[2] is None:
             assertion = 'Have you mentioned %s?' % about[0]
         elif about[0] is None and about[1] is not None and about[2] is None:
-            assertion = 'What kind of action is %s' % about[1]
+            assertion = 'Is %s an action or property?' % about[1]
         elif about[0] is not None and about[1] is not None and about[2] is None:
-            assertion = 'Tell me more about %s having %s' % (about[0], about[1])
+            assertion = 'Is it possible that %s %s' % (about[0], about[1])
         elif about[0] is not None and about[1] is not None and about[2] is not None:
             assertion = 'Is it true that %s %s %s?' % about
         else:
