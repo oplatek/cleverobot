@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import unittest
-from cbot.parse.word_distance import WordDistance
+from cbot.lu.word_distance import WordDistance
 
 
 class TestWordDistance(unittest.TestCase):

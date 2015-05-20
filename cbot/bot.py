@@ -19,8 +19,7 @@ from cbot.kb.kb_data import data
 from cbot.dm.state import SimpleTurnState
 from cbot.dm.policy import RuleBasedPolicy
 import cbot.kb as kb
-import cbot.nlg as nlg
-from cbot.parse.pos import PerceptronTagger
+from cbot.lu.pos import PerceptronTagger
 
 
 LOGGING_ADDRESS = 'tcp://127.0.0.1:6699'
@@ -181,11 +180,9 @@ class ChatBot(multiprocessing.Process):
         self.input_port = input_port
         self.output_port = output_port
 
-        self.timeout = 0.2
         self.should_run = True
 
-        self.state = SimpleTurnState()
-        self.logger, self.kb, self.policy, self.nlg, self.pos_tagger = None, None, None, None, None
+        self.logger, self.kb, self.policy = None, None, None
 
     def receive_msg(self):
         # TODO use json validation
@@ -199,9 +196,6 @@ class ChatBot(multiprocessing.Process):
             if msg['utterance'].lower() == 'your id' or msg['utterance'].lower() == 'your id, please!':
                 self.send_msg(self.name)
                 return None
-            self.logger.debug('len(history) %d' % len(self.state.history))
-            if len(self.state.history) == 16:
-                self.send_msg("Thanks for chatting with me! Finally someone talkative.")
             return msg
         else:  # Hacks
             if self.godot in socks and socks[self.godot] == zmq.POLLIN:
@@ -211,7 +205,7 @@ class ChatBot(multiprocessing.Process):
                 assert stat_req == 'request', 'stat_req %s' % stat_req
                 stats = {
                     'time': time.time(),
-                    'history_len': len(self.state.history)
+                    'history_len': len(self.policy.state.history)  # use other properties of policy
                 }
                 self.logger.debug('ChatBot %s received stats request', self.name)
                 self.osocket.send_string('stat_%s %s' % (self.name, jsonapi.dumps(stats)))
@@ -257,8 +251,7 @@ class ChatBot(multiprocessing.Process):
         self.kb.add_triplets(data)
         self.logger.debug('KB loaded')
 
-        self.policy = RuleBasedPolicy(self.kb, self.logger)
-        self.nlg = nlg.Nlg(self.logger)
+        self.policy = RuleBasedPolicy(self.kb, SimpleTurnState())
         self.logger.debug('All components initiated')
 
         self.chatbot_loop()
@@ -269,13 +262,9 @@ class ChatBot(multiprocessing.Process):
             msg = self.receive_msg()
             if msg is None:
                 continue
-            self.state.update_state(msg)
-            action = self.policy.act(self.state, self.kb)
-            start = time.time()
-            while action is not None and (time.time() - start) < self.timeout:
-                response = action.act()
-                self.logger.debug('Action %s triggered response %s', action, response)
-                self.send_msg(response)
+            self.policy.update_state(msg['utterance'])
+            response = self.policy.act()
+            self.send_msg(response)
 
 
 if __name__ == '__main__':

@@ -2,10 +2,10 @@
 # encoding: utf-8
 from __future__ import unicode_literals, division
 from itertools import izip
-from cbot.parse.dependencygraph import DependencyGraph
-from cbot.parse.evaluate import DependencyEvaluator
-from cbot.parse.parser import Parser, NonProjectiveException
-from cbot.parse.pos import PerceptronTagger
+from cbot.lu.dependencygraph import DependencyGraph
+from cbot.lu.evaluate import DependencyEvaluator
+from cbot.lu.parser import Parser, NonProjectiveException
+from cbot.lu.pos import PerceptronTagger
 import argparse
 import logging
 

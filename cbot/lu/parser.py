@@ -6,9 +6,9 @@ from os import path
 import os
 from collections import defaultdict
 import random
-from cbot.parse import evaluate
-from cbot.parse.perceptron import Perceptron
-from cbot.parse.pos import DefaultList
+from cbot.lu import evaluate
+from cbot.lu.perceptron import Perceptron
+from cbot.lu.pos import DefaultList
 from dependencygraph import DependencyGraph, Node
 import logging
 

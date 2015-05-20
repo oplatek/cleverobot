@@ -37,6 +37,8 @@ POS = {
     'VERB': 'verb',
     'X': 'other',
 }
+
+
 POSR = {y:x for x, y in POS.iteritems()}
 
 

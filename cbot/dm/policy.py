@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 # encoding: utf-8
 from __future__ import unicode_literals, division
-import cbot.dm.actions as act
+import logging
 import numpy as np
+from cbot.dm.actions import NoOp, BaseAction
+from cbot.dm.state import Utterance
+from cbot.lu.pos import POSR
 
 
 def sample(items, probabilities, n=1):
@@ -12,18 +15,16 @@ def sample(items, probabilities, n=1):
     return np.random.choice(items, n, norm_prob, replace=False)
 
 
+
 class RuleBasedPolicy(object):
 
-    def __init__(self, kb, logger):
-        self.greeting = act.Greeting()
-        self.goodbye = act.Goodbye()
-        self.elisaask = act.ElisaAsk()
-        self.kbrandomask = act.KBRandomAsk(kb)
-        self.kbmenttionask = act.KBMentionAsk(kb)
-        self.displayimage = act.DisplayImage()
-        self.logger = logger
+    def __init__(self, kb, state):
+        self.kb = kb
+        self.state = state
+        # self.logger = logging.getLogger(self.__module__)  # TODO self class/module
+        self.logger = logging.getLogger(self.__class__)  # TODO self class/module
 
-    def act(self, state, kb):
+    def act(self):
         """TODO work with time and implement simple model of needs and attention:
 
         Need is gradually increasing until its fulfilled and reset.
@@ -32,16 +33,33 @@ class RuleBasedPolicy(object):
         Attention is highest just after sensing a stimulus and fades away.
         The stimuli must vary to keep attention.
         """
-        belief = state.belief
+
+
+
+        winner = NoOp(self.state, "system")  # TODO remove
+        return winner
+
+    def _extract_mentions(utt):
+        assert isinstance(utt, Utterance)
+        svo_prob = 0.7
+        mentions = []
+        while all(i is not None for i in utt.svo()):
+            s, v, o = [utt.tokens[i] for i in utt.svo()]  # Subject Verb Object
+            min_i, max_i = min(utt.svo()), max(utt.svo())
+            if "not" in utt.tokens[min_i, max_i]:
+                svo_prob = 1.0 - svo_prob  # negation detected
+            mentions.append((s, v, o), svo_prob)
+            utt = utt[max_i + 1:]
+        # TODO boost probability for known facts, relations
+        return mentions
+
+    def update_state(self, utt):
+        """Perform NLU preprocessing before updating the state"""
+        # TODO bayesian udpate for facts
+        # TODO HMM for dialogue act types based on facts and used generative model for NLG
         actions = []
-        if self.greeting.compatibility_probability(state) > 0.5:
-            actions.extend(self.greeting.act(state))
-        if self.displayimage.need_probability(state) > 0.5:
-            actions.extend(self.displayimage.act(state))
-        if len(belief['known_mentions']) > 0:
-            actions.extend(self.kbmenttionask.act(state))
-        elif len(belief['unknown_mentions']) > 0:
-            actions.extend(self.elisaask.act(state))
-        elif len(belief['known_mentions']) == 0 and len(belief['unknown_mentions']) == 0:
-            actions.extend(self.kbrandomask.act(state))
-        return actions
+        for action_type in BaseAction.__subclasses__():
+            actions.extend(action_type.user_action_detection_factory())
+        TODO update
+
+

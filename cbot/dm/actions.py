@@ -39,11 +39,10 @@ class BaseAction(object):
         self.name = self.__class__.__name__
         self.actor = actor
         self.state = state
-        self.act_probability = 1.0
         self.why_features = []
         self.args = {}
         self.reward = 1.0
-        self.value = 1.0
+        self.value = 1.0  # consider it probability during production
         self.surface_form = None
         # Override possibly the default values by
         for key, value in properties.items():
@@ -103,7 +102,7 @@ class NoOp(BaseAction):
     def reaction_factory(cls, state, n=10, probability_threshold=0.0):
         return [NoOp(state,
                      "system",
-                     why_features=[state.user_actions_unprocessed[NoOp.__class__]], )
+                     why_features=[state.user_actions[NoOp.__class__]], )
                 ]
 
     def act(self):
@@ -201,8 +200,7 @@ class YesNoAsk(BaseAction):
         # should I do // problem with action selection
         # TODO store in triplet format all the actions
         # TODO confirm some of the fact from knowledgebase
-        questions = [YesNoAsk(state, "system", args=state.last_mention),
-                     YesNoAsk(state, "system", args=('You', 'did', state.last_user_action)),
+        questions = [YesNoAsk(state, "system", args=('You', 'did', state.last_user_action)),
                      YesNoAsk(state, "system", args=('Sacramento', 'isCapitalOf', 'California'))]
         return questions
 
@@ -304,8 +302,7 @@ class Hello(BaseAction):
         if Hello.__class__ in state.system_actions:
             for act in greetings:
                 act.value /= 2
-        # boost if user
-        if Hello.__class__ in state.user_actions_unprocessed:
+        if Hello.__class__ in state.user_actions:
             for act in greetings:
                 act.value = min(1.0, (act.value * 2) + 0.3)
         return greetings
@@ -330,11 +327,11 @@ class GoodBye(BaseAction):
     @classmethod
     def reaction_factory(cls, state, n=10, probability_threshold=0.0):
         goodbyes = []
-        if GoodBye.__class__ in state.user_actions_unprocessed:
+        if GoodBye.__class__ in state.user_actions:
             goodbyes.append(GoodBye(state, "system"))
-        if NoOp.__class__ in state.user_actions_unprocessed:
+        if NoOp.__class__ in state.user_actions:
             goodbyes.append(GoodBye(state, "system",
-                                    why_features=[state.user_actions_unprocessed[NoOp.__class__]],
+                                    why_features=[state.user_actions[NoOp.__class__]],
                                     value=0.5))
         return goodbyes
 
