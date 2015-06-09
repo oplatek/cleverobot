@@ -42,7 +42,7 @@ class BaseAction(object):
         self.why_features = []
         self.args = {}
         self.reward = 1.0
-        self.value = 1.0  # consider it probability during production
+        self.value = 1.0  # consider it probability during SLU # TODO fix
         self.surface_form = None
         # Override possibly the default values by
         for key, value in properties.items():
