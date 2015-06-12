@@ -3,7 +3,7 @@
 from __future__ import division, unicode_literals
 from collections import OrderedDict
 import operator
-from cbot.dm.actions import BaseAction
+from cbot.dm.actions import BaseAction, Reject, Hello, Deny
 from cbot.lu.pos import PerceptronTagger, POSR
 from collections import defaultdict
 epsilon = 0.00000001
@@ -64,6 +64,7 @@ class SimpleTurnState(object):
         self.system_actions = OrderedDict()  # Keys are action type == class_names
         self.user_dat = defaultdict(int)  # P(d_t | utt_t, d_{t-1}, utt_{t-1}, d_{t-2}, utt_{t-2}, ...)
         self.user_mentions = defaultdict(int)
+        self.system_mentions = []
         self.user_actions = OrderedDict()  # Keys are action type == class_names
         self._dat_ngrams = [defaultdict(int)] * self.dat_ngrams_n  # P(d_t, d_{t-1}, d_{t-2} | utt_t, utt_{t-1}, utt_{t-2})
 
@@ -120,18 +121,21 @@ class SimpleTurnState(object):
         return reversed(self.user_mentions)
 
     @staticmethod
-    def extract_mentions(utt):
+    def extract_mentions(utt, user_mentions, system_mentions):
         assert isinstance(utt, Utterance)
         svo_prob = 0.7
-        mentions = []
+        mentions = OrderedDict()
         while all(i is not None for i in utt.svo()):
             s, v, o = [utt.tokens[i] for i in utt.svo()]  # Subject Verb Object
             min_i, max_i = min(utt.svo()), max(utt.svo())
             if "not" in utt.tokens[min_i, max_i]:
                 svo_prob = 1.0 - svo_prob  # negation detected
-            mentions.append((s, v, o), svo_prob)
+            mentions[(s, v, o)] = svo_prob
             utt = utt[max_i + 1:]
-        # TODO boost probability for known facts, relations
+        # boost probability for known facts, relations based on user_mentions & system_mentions
+        for triplet in mentions:
+            if triplet in user_mentions or triplet in system_mentions:
+                mentions[triplet] = 1.0
         return mentions
 
     def update_mentions(self, utt):
@@ -141,14 +145,14 @@ class SimpleTurnState(object):
         # TODO we can smooth the history back and forth and detect mutually exclusive actions (Hard)
         # TODO implement forgetting by discriminating between high and low probable distribution
         #       - something like if max_prob = 1.1 * max_prob & normalize others
-        mentions = self.__class__.extract_mentions(utt)
+        mentions = self.__class__.extract_mentions(utt, self.user_mentions, self.system_mentions)
         # simple discriminative bayesian update for user_mentions in this context for SLU
         # ((fact, relation, fact2), probability) dictionary simple bayesian update:
         # See Comparison of Bayesian Discriminative and Generative Models for Dialogue State Tracking
         # Lukáš Žilka,David Marek,Matěj Korvas, Filip Jurčíček; equation (5)
-        for triplet, probability in mentions.iteritems():
+        for triplet, probability in mentions.items():
             if probability == 0.0:
-                self.user_mentions.pop(triplet, 0.0)
+                del self.user_mentions[triplet]
                 continue
             self.user_mentions[triplet] = probability + (1 - probability) * self._trans_prob_mentions
 
@@ -204,7 +208,11 @@ class SimpleTurnState(object):
         assert(len(matching_d_actions) > 0)
 
         def score_mult_args(scores):
-            return max(scores) + (sum(scores) / len(scores))
+            max_scores = max(scores)
+            assert max_scores <= 1.0
+            if len(scores) == 0:
+                return 0.5
+            return max_scores + (sum(scores) / len(scores))
 
         # score a based on its arguments
         actions_scored = {}
@@ -212,10 +220,28 @@ class SimpleTurnState(object):
             scores = (self.user_mentions[triplet] for triplet in a.args.itervalues() if triplet in self.user_mentions)
             actions_scored[a] = score_mult_args(scores)
         best_a = max(actions_scored, key=operator.itemgetter(1))
-        self.user_actions.append(best_a)
 
-        # TODO Force consistency  e.g. confirm(X) & reject(X) is not allowed, also it should be mostly handled by the LM
-        # TODO under assumption of common arguments X
+        # Force some consistency and reimpretation
+        if isinstance(best_a, Reject):
+            try:
+                last_mention, deny_who = (self.user_mentions[-1], 'deny_user') if self.user_vs_system_history[-1] else (self.system_mentions[-1], 'deny_system')
+            except IndexError:
+                last_mention = None  # at the beginning
+            if len(best_a.args) == 0:
+                # Infer the args from last action
+                if last_mention is not None:
+                    best_a.args = {deny_who: last_mention}
+                else:
+                    best_a = Hello()  # we are at the beginning so understand Hello() # TODO hack
+            else:
+                common_mentions = set(best_a.args.values() & (set(self.user_mentions) | set(self.system_mentions)))
+                if len(common_mentions) > 0:
+                    best_a = Deny()
+                    best_a.args = dict([(k, v) for k, v in best_a.args if v in common_mentions])
+                else:
+                    pass   # keep Reject
+
+        self.user_actions.append(best_a)
 
         self.user_vs_system_history.append(True)  # user input
         assert(len(self.user_actions) + len(self.system_actions) == len(self.user_vs_system_history))
@@ -223,4 +249,5 @@ class SimpleTurnState(object):
     def update_system_action(self, action):
         self.system_actions.append(action)
         self.user_vs_system_history.append(False)  # user input
+        self.system_mentions.extend(action.args.values())
         assert(len(self.user_actions) + len(self.system_actions) == len(self.user_vs_system_history))

@@ -285,6 +285,22 @@ class Reject(BaseAction):
         return "Reject %s" % self.args
 
 
+class Deny(BaseAction):
+    @classmethod
+    def user_action_detection_factory(cls, state):
+        pass
+
+    @classmethod
+    def reaction_factory(cls, state, n=10, probability_threshold=0.0):
+        pass
+
+    def act(self):
+        pass
+
+    def description(self):
+        return "Deny %s" % self.args
+
+
 class Hello(BaseAction):
     @classmethod
     def user_action_detection_factory(cls, state):
@@ -292,7 +308,6 @@ class Hello(BaseAction):
         # TODO simplistic use nlg variations or classification
         if 'hi' in state.current_user_utterance.lower():
             greetings.append(Hello(state, "human"))
-
 
     @classmethod
     def reaction_factory(cls, state, n=1, probability_threshold=0.0):
@@ -342,6 +357,7 @@ class GoodBye(BaseAction):
     def act(self):
         # TODO nlg
         return "Goodbye"
+
 
 
 # class IConfirm(BaseAction):
