@@ -3,7 +3,7 @@
 from __future__ import unicode_literals
 import logging
 import unittest
-import nlg
+from cbot import nlg
 
 
 class NlgTest(unittest.TestCase):

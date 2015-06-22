@@ -16,7 +16,7 @@ from zmq.log.handlers import PUBHandler
 from zmq.utils import jsonapi
 
 from cbot.kb.kb_data import data
-from cbot.dm.state import SimpleTurnState
+from cbot.dm.state import SimpleTurnState, Utterance
 from cbot.dm.policy import RuleBasedPolicy
 import cbot.kb as kb
 from cbot.lu.pos import PerceptronTagger
@@ -174,7 +174,7 @@ class ChatBot(multiprocessing.Process):
     """
 
     def __init__(self, input_port, output_port, name):
-        super(ChatBot, self).__init__()
+        super(self.__class__, self).__init__()
         self.name = name
 
         self.input_port = input_port
@@ -183,6 +183,13 @@ class ChatBot(multiprocessing.Process):
         self.should_run = True
 
         self.logger, self.kb, self.policy = None, None, None
+
+    def __str__(self):
+        super_info = super(self.__class__).__str__()
+        str_repr = str(self.__class__) + ": " + self.name
+        str_repr += '\n input - output port: %s - %s\n' % (self.input_port, self.output_port)
+        str_repr += super_info
+        return str_repr
 
     def receive_msg(self):
         # TODO use json validation
@@ -238,38 +245,38 @@ class ChatBot(multiprocessing.Process):
         self.poller.register(self.isocket, zmq.POLLIN)
         self.poller.register(self.req_stat, zmq.POLLIN)
 
-    def run(self):
-        self.zmq_init()
+    def single_process_init(self):
         self.logger = logging.getLogger(self.__class__.__name__ + str(self.name))
         self.logger.addHandler(create_local_logging_handler('%s_%s' % (time.time(), self.name)))
-        connect_logger(self.logger, self.context)
-
-        self.logger.debug('Runs with input_port: %d, output_port %d' % (self.input_port, self.output_port))
 
         self.kb = kb.KnowledgeBase()
         self.kb.load_default_models()
         self.kb.add_triplets(data)
-        self.logger.debug('KB loaded')
 
-        self.policy = RuleBasedPolicy(self.kb, SimpleTurnState())
-        self.logger.debug('All components initiated')
+        dat_trans_prob = None  # TODO laod transition probabilities, update them online for well accepted dialogues
+        self.policy = RuleBasedPolicy(self.kb, SimpleTurnState(dat_trans_prob))
 
+    def run(self):
+        self.zmq_init()
+        self.single_process_init()
+        connect_logger(self.logger, self.context)
         self.chatbot_loop()
 
     def chatbot_loop(self):
-        self.logger.debug('entering loop')
+        self.logger.info('Entering loop')
+        self.logger.debug('Chatbot properties:\n%s' % str(self))
         while self.should_run:
             msg = self.receive_msg()
             if msg is None:
                 continue
-            self.policy.update_state(msg['utterance'])
+            self.policy.update_state(Utterance(msg['utterance']))
             response = self.policy.act()
             self.send_msg(response)
 
 
 if __name__ == '__main__':
     """Chatbot demo without zmq and multiprocessing."""
-    bot = ChatBot(input_port=-6, output_port=-66)
+    bot = ChatBot(input_port=-6, output_port=-66, name="Command line chatbot")
 
     def get_msg():
         utt = raw_input("Tell me\n")
@@ -280,4 +287,5 @@ if __name__ == '__main__':
 
     bot.receive_msg = get_msg
     bot.send_msg = send_msg
+    bot.single_process_init()
     bot.chatbot_loop()

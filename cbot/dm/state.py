@@ -15,7 +15,7 @@ class Utterance(str):
 
     def __init__(self, raw_utt):
         super(Utterance, self).__init__(raw_utt)
-        self._tokens, self._pos = None, None
+        self._svo, self._tokens, self._pos = None, None, None
         self.prob = 1.0
 
     @property
@@ -27,24 +27,28 @@ class Utterance(str):
     @property
     def pos(self):
         if self._pos is None:
-            self._pos = Utterance.pos_tagger.tag(self._tokens)
+            self._pos = Utterance.pos_tagger.tag(self.tokens)
         return self._pos
 
+    @property
     def svo(self):
         """subject verb object position"""
-        subj, verb, obj = None, None, None
-        for i, pos in enumerate(self.pos):
-            if pos == POSR['pronoun'] or pos == POSR['proper noun'] or pos == POSR['noun']:
-                if subj is None:
-                    subj = i
-                else:
-                    obj = i
-            if pos == POSR['verb']:
-                verb = i
-        return subj, verb, obj
+        if self._svo is None:
+            subj, verb, obj = None, None, None
+            for i, pos in enumerate(self.pos):
+                if pos == POSR['pronoun'] or pos == POSR['proper noun'] or pos == POSR['noun']:
+                    if subj is None:
+                        subj = i
+                    else:
+                        obj = i
+                if pos == POSR['verb']:
+                    verb = i
+            self._svo = (subj, verb, obj)
+        return self._svo
 
 
 class SimpleTurnState(object):
+    # TODO add KB to the state because
     # TODO state where I can decide what to keep and what to throw away
     # Action may remove the "feature from state" e.g.
     # ('request', 'food', 'chinese') & (inform, location, London) &
@@ -62,11 +66,11 @@ class SimpleTurnState(object):
 
         self.user_vs_system_history = []  #
         self.system_actions = OrderedDict()  # Keys are action type == class_names
-        self.user_dat = defaultdict(int)  # P(d_t | utt_t, d_{t-1}, utt_{t-1}, d_{t-2}, utt_{t-2}, ...)
-        self.user_mentions = defaultdict(int)
+        self.user_dat = defaultdict(float)  # P(d_t | utt_t, d_{t-1}, utt_{t-1}, d_{t-2}, utt_{t-2}, ...)
+        self.user_mentions = defaultdict(float)
         self.system_mentions = []
         self.user_actions = OrderedDict()  # Keys are action type == class_names
-        self._dat_ngrams = [defaultdict(int)] * self.dat_ngrams_n  # P(d_t, d_{t-1}, d_{t-2} | utt_t, utt_{t-1}, utt_{t-2})
+        self._dat_ngrams = [defaultdict(float)] * self.dat_ngrams_n  # P(d_t, d_{t-1}, d_{t-2} | utt_t, utt_{t-1}, utt_{t-2})
 
         self._backup_attributes = ['current_user_utterance', 'user_mentions', 'system_actions', 'user_dat', '']
 
@@ -88,7 +92,7 @@ class SimpleTurnState(object):
     def current_user_utterance(self):
         return self._current_user_utterance
 
-    @property.setter
+    @current_user_utterance.setter
     def current_user_utterance(self, value):
         if isinstance(value, str):
             self._current_user_utterance = Utterance(value)
@@ -125,13 +129,13 @@ class SimpleTurnState(object):
         assert isinstance(utt, Utterance)
         svo_prob = 0.7
         mentions = OrderedDict()
-        while all(i is not None for i in utt.svo()):
-            s, v, o = [utt.tokens[i] for i in utt.svo()]  # Subject Verb Object
-            min_i, max_i = min(utt.svo()), max(utt.svo())
-            if "not" in utt.tokens[min_i, max_i]:
+        while all(i is not None for i in utt.svo):
+            s, v, o = [utt.tokens[i] for i in utt.svo]  # Subject Verb Object
+            min_i, max_i = min(utt.svo), max(utt.svo)
+            if "not" in utt.tokens[min_i:max_i]:
                 svo_prob = 1.0 - svo_prob  # negation detected
             mentions[(s, v, o)] = svo_prob
-            utt = utt[max_i + 1:]
+            utt = Utterance(' '.join(utt.tokens[max_i + 1:]))  # rest of utterance
         # boost probability for known facts, relations based on user_mentions & system_mentions
         for triplet in mentions:
             if triplet in user_mentions or triplet in system_mentions:
@@ -161,10 +165,10 @@ class SimpleTurnState(object):
         Assumes that utt is a sentence or another chunk of words which has unique DAT."""
         actions = []
         for action_type in BaseAction.__subclasses__():
-            actions.extend(action_type.user_action_detection_factory())
+            actions.extend(action_type.user_action_detection_factory(self))
 
         # heuristics
-        dat_types_likelihood = defaultdict(int)
+        dat_types_likelihood = defaultdict(float)
         for act in actions:
             dat_types_likelihood[type(act)] += act.value
         norm = sum(dat_types_likelihood.values())
@@ -177,9 +181,10 @@ class SimpleTurnState(object):
         assert (len(self._dat_ngrams) == n)
         # computing new probabilties of DAT based on ngrams probabilities(observation & LM) from scratch
         finished, indexes, items_count = False, [0] * n, [len(dat_ngrams) for dat_ngrams in self._dat_ngrams]
-        dat_ngrams = [dat_ngrams.iteritems() for dat_ngrams in self._dat_ngrams]
+        dat_ngrams = [dat_ngrams.items() for dat_ngrams in self._dat_ngrams]
         while not finished:
             ngram_obs_probs = (dat_ngrams[i][indexes[i]] for i in range(n))
+            # TODO
             overflow_check, i = True, 0
             while overflow_check:
                 if indexes[i] == items_count[i]:
@@ -190,7 +195,7 @@ class SimpleTurnState(object):
                     indexes[i], indexes[i + 1], i = 0, indexes[i + 1] + 1, i + 1
                 else:
                     overflow_check = False
-            ngram_obs_prob, ngram = zip(*ngram_obs_probs)
+            ngram_obs_prob, ngram = zip(*list(ngram_obs_probs))
             ngram_obs_prob = sum(ngram_obs_prob)
             ngram_prob = self.dat_lm(ngram)
             self.user_dat[ngram[-1]] += ngram_prob * ngram_obs_prob
@@ -221,7 +226,8 @@ class SimpleTurnState(object):
             actions_scored[a] = score_mult_args(scores)
         best_a = max(actions_scored, key=operator.itemgetter(1))
 
-        # Force some consistency and reimpretation
+        # Force some consistency and reinterpretation
+        # TODO use probabilistic attitude e.g. Subtract some probability mass from Reject and distribute it to deny.
         if isinstance(best_a, Reject):
             try:
                 last_mention, deny_who = (self.user_mentions[-1], 'deny_user') if self.user_vs_system_history[-1] else (self.system_mentions[-1], 'deny_system')

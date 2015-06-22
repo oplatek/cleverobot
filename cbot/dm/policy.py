@@ -4,9 +4,7 @@ from __future__ import unicode_literals, division
 import logging
 from scipy import stats
 import numpy as np
-from cbot.dm.actions import NoOp, BaseAction
-from cbot.dm.state import Utterance
-from cbot.lu.pos import POSR
+from cbot.dm.actions import BaseAction
 
 
 def sample(items, probabilities, n=1):
@@ -23,7 +21,7 @@ class RuleBasedPolicy(object):
         self.kb = kb
         self.state = state
         # self.logger = logging.getLogger(self.__module__)  # TODO self class/module
-        self.logger = logging.getLogger(self.__class__)  # TODO self class/module
+        self.logger = logging.getLogger(str(self.__class__))  # TODO self class/module
 
     def act(self):
         """TODO work with time and implement simple model of needs and attention:
@@ -34,6 +32,7 @@ class RuleBasedPolicy(object):
         Attention is highest just after sensing a stimulus and fades away.
         The stimuli must vary to keep attention.
         """
+        # TODO no RL: implements rewards and distribute the rewards to the action
         actions = []
         for action_type in BaseAction.__subclasses__():
             actions.extend(action_type.reaction_factory())

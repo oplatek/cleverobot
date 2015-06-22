@@ -17,9 +17,10 @@ some actions (both human, and system), decreases probabilities of others because
 from __future__ import division, unicode_literals
 import abc
 from copy import deepcopy
-from cbot.dm.state import SimpleTurnState
+# from cbot.dm.state import SimpleTurnState
 # TODO add reasons for the NLU and DM outputs
 # TODO implement reasons for actions
+from scipy import stats
 
 
 class BaseAction(object):
@@ -34,7 +35,7 @@ class BaseAction(object):
         """
         Actor can be the human or the system.
         """
-        assert isinstance(state, SimpleTurnState)
+        # assert isinstance(state, SimpleTurnState)
         assert actor == "human" or "system"
         self.name = self.__class__.__name__
         self.actor = actor
@@ -94,7 +95,7 @@ class NoOp(BaseAction):
     @classmethod
     def user_action_detection_factory(cls, state):
         if not state.current_user_utterance:
-            return NoOp(state, "human")
+            return [NoOp(state, "human")]
         else:
             return []
 
@@ -119,7 +120,7 @@ class Inform(BaseAction):
         cuu = state.current_user_utterance
         if cuu.svo[1] < cuu.svo[0]:  # svo subject, verb, object
             return []  # Question
-        svo = dict(zip(('subj', 'verb', 'obj'), (cuu.tokens[i] for i in cuu.svo)))
+        svo = dict(zip(('subj', 'verb', 'obj'), (cuu.tokens[i] if i is not None else None for i in cuu.svo)))
         svo_expanded = [(w, 'has_pos', pos) for pos, w in svo.iteritems()]
 
         # Informing about previously asked triple
@@ -135,7 +136,7 @@ class Inform(BaseAction):
                 informs.append((Inform(state, "human", args=svo, why_features=why_features)))
         # Informing from unknown reason
         if len(informs) < 6:  # heuristics 3! == 6 however action may ask about the same one argument
-            if None not in svo.items():
+            if not None in svo.items():
                 informs.append(Inform(state, "human", args=svo, why_features=svo_expanded, value=0.5))
         # Tuning value manually
         forbidden_found = any((c in cuu for c in ['!', '?', 'ask', 'you']))  # questions are not in inform style
@@ -165,20 +166,41 @@ class Inform(BaseAction):
         return str(self.args.values())
 
 
-class WhatAsk(BaseAction):  # TODO
+class WhatAsk(BaseAction):
     @classmethod
     def user_action_detection_factory(cls, state):
-        pass
+        questions = []
+        cuu = state.current_user_utterance
+        svo = dict(zip(('subj', 'verb', 'obj'), (cuu.tokens[i] if i is not None else None for i in cuu.svo)))
+        question_triplet = svo.items()
+        subj = svo['subj']
+        # TODO improve: check for how, where, who, ...
+        if subj is not None and 'what' in subj.lower():
+            svo['subj'] = None  # TODO discarding a lot information
+            questions.append(WhatAsk(state, "human", args=svo, why_features=[question_triplet], value=1.0))
+        elif cuu.svo[1] > cuu.svo[0]:  # svo subject, verb, object -> Question
+            questions.append(WhatAsk(state, "human", args=svo, why_features=[question_triplet], value=0.5))
+        return questions
 
     @classmethod
-    def reaction_factory(cls, state, n=10, probability_threshold=0.0):
-        pass
+    def reaction_factory(cls, state, n=10, probability_threshold=0.0, mentions_sample=10):
+        questions = []
+        incomplete_mentions = [(m, prob) for m, prob in state.user_mentions.iteritems() if None in m]
+        # TODO determine if how, where, what, who is the best
+        for m in incomplete_mentions:
+            questions.append(WhatAsk(state, "system", args=m, value=prob))
+        probabilities = [p for p in state.user_mentions.itervalues()]
+        action_index_distribution = stats.rv_discrete(name='custm', values=(range(len(state.user_mentions)), probabilities))
+        sample = [state.user_mentions[i] for i in action_index_distribution.rvs(size=mentions_sample)]
+        questions.extend(sample)
+        return questions
 
     def description(self):
-        return "Ask about open question about %s", self.args
+        return "Ask open what question about %s", self.args
 
     def act(self):
-        pass
+        # TODO nlg: differentiate between person and thing etc
+        return 'What %{verb} %{obj}?' % self.args
 
 
 class YesNoAsk(BaseAction):
@@ -266,6 +288,7 @@ class Reject(BaseAction):
             rejects.append(Reject(state, "human",
                                   args=state.last_system_action.args,
                                   why_features=[state.current_user_utterance, state.last_system_action]))
+        return rejects
 
     @classmethod
     def reaction_factory(cls, state, n=10, probability_threshold=0.0):
@@ -286,16 +309,30 @@ class Reject(BaseAction):
 
 
 class Deny(BaseAction):
+    negation_markers = set(['no', 'not'])
+
     @classmethod
     def user_action_detection_factory(cls, state):
-        pass
+        denies = []
+        cuu = state.current_user_utterance
+        negations = [(w, i) for w, i in enumerate(cuu.tokens) if w in Deny.negation_markers]
+        if len(negations) > 0:
+            svo = dict(zip(('subj', 'verb', 'obj'), (cuu.tokens[i] if i is not None else None for i in cuu.svo)))
+            svo_bag = set(svo.items())
+            for m, i in enumerate(state.system_mentions):
+                bag_m = set(m)
+                if len(bag_m & svo_bag) > 0:
+                    denies.append(Deny(state, "human", args=svo, why_features=[negations, svo]))
+        return negations
 
     @classmethod
     def reaction_factory(cls, state, n=10, probability_threshold=0.0):
-        pass
+        # TODO we do not check facts for consistency so we cannot deny facts
+        return []
 
     def act(self):
-        pass
+        # TODO nlg
+        return "It is not true that %s" % str(self.args)
 
     def description(self):
         return "Deny %s" % self.args
@@ -308,6 +345,7 @@ class Hello(BaseAction):
         # TODO simplistic use nlg variations or classification
         if 'hi' in state.current_user_utterance.lower():
             greetings.append(Hello(state, "human"))
+        return greetings
 
     @classmethod
     def reaction_factory(cls, state, n=1, probability_threshold=0.0):
