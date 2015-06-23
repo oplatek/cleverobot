@@ -93,16 +93,13 @@ class NoOp(BaseAction):
     @classmethod
     def user_action_detection_factory(cls, state):
         if not state.current_user_utterance:
-            return [NoOp("human")]
+            return [NoOp("human", why_features=['Conversation has not started'])]
         else:
             return []
 
     @classmethod
     def reaction_factory(cls, state, n=10, probability_threshold=0.0):
-        return [NoOp(state,
-                     "system",
-                     why_features=[state.user_actions[NoOp.__class__]], )
-                ]
+        return [NoOp("system")]
 
     def act(self):
         return
@@ -149,10 +146,10 @@ class Inform(BaseAction):
     @classmethod
     def reaction_factory(cls, state, n=10, probability_threshold=0.0):
         informs = []
-        for i, triplet in enumerate(state.last_mentions()):
+        for i, triplet in enumerate(state.user_mentions):
             # FIXME TODO use knowledge base end extract missing operands for triplets
             # for example (sacramento, is_capital, ?) -> (sacramento, is_capital, California)
-            if any((c is not None for c in triplet)):
+            if not all((c is None for c in triplet)):
                 informs.append(Inform("system", args=triplet))
         return informs
 
@@ -187,12 +184,13 @@ class WhatAsk(BaseAction):
         incomplete_mentions = [(m, prob) for m, prob in state.user_mentions.iteritems() if None in m]
         # TODO determine if how, where, what, who is the best
         for m in incomplete_mentions:
-            questions.append(WhatAsk("system", args=m, value=prob))
-        probabilities = [p for p in state.user_mentions.itervalues()]
-        action_index_distribution = stats.rv_discrete(name='custm',
-                                                      values=(range(len(state.user_mentions)), probabilities))
-        sample = [state.user_mentions[i] for i in action_index_distribution.rvs(size=mentions_sample)]
-        questions.extend(sample)
+            questions.append(WhatAsk("system", args=m, value=prob, why_features=["User mentions incomplete%s" % str(m)]))
+        qs, probabilities = state.user_mentions.keys(), state.user_mentions.values()
+        action_distribution = stats.rv_discrete(name='custm', values=(range(len(qs)), probabilities))
+        sample_size = min(mentions_sample, qs)
+        selected_mentions = [qs[i] for i in action_distribution.rvs(size=sample_size)]
+        for m in selected_mentions:
+            questions.append(WhatAsk("system", args=m, why_features=["User mentiones %s" % str(m)]))
         return questions
 
     def description(self):

@@ -72,7 +72,7 @@ class SimpleTurnState(object):
         self.user_dat = defaultdict(float)  # P(d_t | utt_t, d_{t-1}, utt_{t-1}, d_{t-2}, utt_{t-2}, ...)
         self.user_mentions = defaultdict(float)
         self.system_mentions = []
-        self.user_actions = OrderedDict()  # Keys are action type == class_names
+        self.user_actions = OrderedDict()  # Keys are action type == class_names, values instances
         self._dat_ngrams = [{NoOp: 1.0}] * self.dat_ngrams_n  # P(d_t, d_{t-1}, d_{t-2} | utt_t, utt_{t-1}, utt_{t-2})
 
         self._backup_attributes = ['current_user_utterance', 'user_mentions', 'system_actions', 'user_dat', '']
@@ -123,9 +123,6 @@ class SimpleTurnState(object):
     @property
     def last_system_action(self):
         pass
-
-    def last_mentions(self):
-        return reversed(self.user_mentions)
 
     @staticmethod
     def extract_mentions(utt, user_mentions, system_mentions):
@@ -211,29 +208,30 @@ class SimpleTurnState(object):
         norm = sum((prob for prob in self.user_dat.itervalues()))
         for d in self.user_dat:
             self.user_dat[d] /= norm
+        # TODO the actions has strange value (equally normalized)
         return actions
 
     def update_user_action(self, actions):
         # Just reranker right now
         # First extract best DAT
-        best_d, d_prob = max(self.user_dat, key=operator.itemgetter(1))  # argmax
+        best_d, d_prob = max(self.user_dat.iteritems(), key=operator.itemgetter(1))  # argmax
         assert(best_d is not None)
         matching_d_actions = [a for a in actions if isinstance(a, best_d)]
         assert(len(matching_d_actions) > 0)
 
         def score_mult_args(scores):
-            max_scores = max(scores)
-            assert max_scores <= 1.0
             if len(scores) == 0:
                 return 0.5
+            max_scores = max(scores)
+            assert max_scores <= 1.0
             return max_scores + (sum(scores) / len(scores))
 
         # score a based on its arguments
         actions_scored = {}
         for a in matching_d_actions:
-            scores = (self.user_mentions[triplet] for triplet in a.args.itervalues() if triplet in self.user_mentions)
+            scores = [self.user_mentions[triplet] for triplet in a.args.itervalues() if triplet in self.user_mentions]
             actions_scored[a] = score_mult_args(scores)
-        best_a = max(actions_scored, key=operator.itemgetter(1))
+        best_a, best_a_prob = max(actions_scored.iteritems(), key=operator.itemgetter(1))
 
         # TODO Force some consistency and reinterpretation
         # TODO use probabilistic attitude e.g. Subtract some probability mass from Reject and distribute it to deny.
@@ -256,13 +254,13 @@ class SimpleTurnState(object):
                 else:
                     pass   # keep Reject
 
-        self.user_actions.append(best_a)
+        self.user_actions[type(best_a)] = best_a
 
         self.user_vs_system_history.append(True)  # user input
         assert(len(self.user_actions) + len(self.system_actions) == len(self.user_vs_system_history))
 
     def update_system_action(self, action):
-        self.system_actions.append(action)
+        self.system_actions[type(action)] = action
         self.user_vs_system_history.append(False)  # user input
         self.system_mentions.extend(action.args.values())
         assert(len(self.user_actions) + len(self.system_actions) == len(self.user_vs_system_history))

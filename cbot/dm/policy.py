@@ -35,10 +35,9 @@ class RuleBasedPolicy(object):
         # TODO no RL: implements rewards and distribute the rewards to the action
         actions = []
         for action_type in BaseAction.__subclasses__():
-            actions.extend(action_type.reaction_factory())
+            actions.extend(action_type.reaction_factory(self.state))
 
         probabilities = [a.value for a in actions]
-
         action_index_distribution = stats.rv_discrete(name='custm', values=(range(len(actions)), probabilities))
         sample_a = actions[action_index_distribution.rvs(size=1)]
 
