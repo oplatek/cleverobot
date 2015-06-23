@@ -169,13 +169,14 @@ class SimpleTurnState(object):
 
         def propagate_overflow(indexes, num_items):
             """Return True if overflowes over highest dimension"""
-            overflow_check, i = True, 0
+            assert len(indexes) == len(num_items)
+            overflow_check, i = True, len(indexes) - 1
             while overflow_check:
                 if indexes[i] == num_items[i]:
-                    if i == len(indexes) - 1:
-                        assert(indexes[-1] == num_items[-1])
+                    if i == 0:
+                        assert(indexes[0] == num_items[0])
                         return True
-                    indexes[i], indexes[i + 1], i = 0, indexes[i + 1] + 1, i + 1
+                    indexes[i], indexes[i - 1], i = 0, indexes[i - 1] + 1, i - 1
                 else:
                     overflow_check = False
             return False
@@ -201,12 +202,12 @@ class SimpleTurnState(object):
         dat_ngrams = [dat_ngrams.items() for dat_ngrams in self._dat_ngrams]
         while not finished:
             ngram_obs_probs = (dat_ngrams[i][indexes[i]] for i in range(n))
-            indexes[0] += 1
-            finished = propagate_overflow(indexes, items_count)
             ngram, ngram_obs_probs = zip(*list(ngram_obs_probs))
             ngram_obs_prob = sum(ngram_obs_probs)
             ngram_prob = self.dat_lm(ngram)
             self.user_dat[ngram[-1]] += ngram_prob * ngram_obs_prob
+            indexes[-1] += 1
+            finished = propagate_overflow(indexes, items_count)
         norm = sum((prob for prob in self.user_dat.itervalues()))
         for d in self.user_dat:
             self.user_dat[d] /= norm
