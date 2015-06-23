@@ -49,6 +49,7 @@ class RuleBasedPolicy(object):
         """Perform NLU preprocessing before updating the state"""
 
         # TODO ?implement interface? - so far this order is fixed
-        self.state.update_mentions(utt)
-        actions = self.state.update_dat(utt)
+        self.state.current_user_utterance = utt
+        self.state.update_mentions()
+        actions = self.state.update_dat()
         self.state.update_user_action(actions)

@@ -3,7 +3,7 @@
 from __future__ import division, unicode_literals
 from collections import OrderedDict
 import operator
-from cbot.dm.actions import BaseAction, Reject, Hello, Deny
+from cbot.dm.actions import BaseAction, Reject, Hello, Deny, NoOp
 from cbot.lu.pos import PerceptronTagger, POSR
 from collections import defaultdict
 epsilon = 0.00000001
@@ -17,6 +17,9 @@ class Utterance(str):
         super(Utterance, self).__init__(raw_utt)
         self._svo, self._tokens, self._pos = None, None, None
         self.prob = 1.0
+
+    def __repr__(self):
+        return super(Utterance, self).__str__()
 
     @property
     def tokens(self):
@@ -70,7 +73,7 @@ class SimpleTurnState(object):
         self.user_mentions = defaultdict(float)
         self.system_mentions = []
         self.user_actions = OrderedDict()  # Keys are action type == class_names
-        self._dat_ngrams = [defaultdict(float)] * self.dat_ngrams_n  # P(d_t, d_{t-1}, d_{t-2} | utt_t, utt_{t-1}, utt_{t-2})
+        self._dat_ngrams = [{NoOp: 1.0}] * self.dat_ngrams_n  # P(d_t, d_{t-1}, d_{t-2} | utt_t, utt_{t-1}, utt_{t-2})
 
         self._backup_attributes = ['current_user_utterance', 'user_mentions', 'system_actions', 'user_dat', '']
 
@@ -142,14 +145,14 @@ class SimpleTurnState(object):
                 mentions[triplet] = 1.0
         return mentions
 
-    def update_mentions(self, utt):
+    def update_mentions(self):
         """SLU task of extracting user_mentions from utterance"""
         # TODO Inform & Ask may introduce more uncertainty -> shallow distributions etc
         # TODO Change of topic if confirm should stop propagating probabilities from previous turns.
         # TODO we can smooth the history back and forth and detect mutually exclusive actions (Hard)
         # TODO implement forgetting by discriminating between high and low probable distribution
         #       - something like if max_prob = 1.1 * max_prob & normalize others
-        mentions = self.__class__.extract_mentions(utt, self.user_mentions, self.system_mentions)
+        mentions = self.__class__.extract_mentions(self.current_user_utterance, self.user_mentions, self.system_mentions)
         # simple discriminative bayesian update for user_mentions in this context for SLU
         # ((fact, relation, fact2), probability) dictionary simple bayesian update:
         # See Comparison of Bayesian Discriminative and Generative Models for Dialogue State Tracking
@@ -160,9 +163,23 @@ class SimpleTurnState(object):
                 continue
             self.user_mentions[triplet] = probability + (1 - probability) * self._trans_prob_mentions
 
-    def update_dat(self, utt, alpha=0.5):
+    def update_dat(self, alpha=0.5):
         """SLU task of determining Dialogue Act Types (DAT) for utterance.
         Assumes that utt is a sentence or another chunk of words which has unique DAT."""
+
+        def propagate_overflow(indexes, num_items):
+            """Return True if overflowes over highest dimension"""
+            overflow_check, i = True, 0
+            while overflow_check:
+                if indexes[i] == num_items[i]:
+                    if i == len(indexes) - 1:
+                        assert(indexes[-1] == num_items[-1])
+                        return True
+                    indexes[i], indexes[i + 1], i = 0, indexes[i + 1] + 1, i + 1
+                else:
+                    overflow_check = False
+            return False
+
         actions = []
         for action_type in BaseAction.__subclasses__():
             actions.extend(action_type.user_action_detection_factory(self))
@@ -178,25 +195,16 @@ class SimpleTurnState(object):
         n = len(self._dat_ngrams)
         self._dat_ngrams.pop(0)
         self._dat_ngrams.append(dat_types_likelihood)
-        assert (len(self._dat_ngrams) == n)
+        assert len(self._dat_ngrams) == n
         # computing new probabilties of DAT based on ngrams probabilities(observation & LM) from scratch
         finished, indexes, items_count = False, [0] * n, [len(dat_ngrams) for dat_ngrams in self._dat_ngrams]
         dat_ngrams = [dat_ngrams.items() for dat_ngrams in self._dat_ngrams]
         while not finished:
             ngram_obs_probs = (dat_ngrams[i][indexes[i]] for i in range(n))
-            # TODO
-            overflow_check, i = True, 0
-            while overflow_check:
-                if indexes[i] == items_count[i]:
-                    if i == len(indexes) - 1:
-                        assert (indexes[-1] == items_count[-1])
-                        finished = True
-                        break
-                    indexes[i], indexes[i + 1], i = 0, indexes[i + 1] + 1, i + 1
-                else:
-                    overflow_check = False
-            ngram_obs_prob, ngram = zip(*list(ngram_obs_probs))
-            ngram_obs_prob = sum(ngram_obs_prob)
+            indexes[0] += 1
+            finished = propagate_overflow(indexes, items_count)
+            ngram, ngram_obs_probs = zip(*list(ngram_obs_probs))
+            ngram_obs_prob = sum(ngram_obs_probs)
             ngram_prob = self.dat_lm(ngram)
             self.user_dat[ngram[-1]] += ngram_prob * ngram_obs_prob
         norm = sum((prob for prob in self.user_dat.itervalues()))
@@ -205,7 +213,7 @@ class SimpleTurnState(object):
         return actions
 
     def update_user_action(self, actions):
-        # Just reranker right now # TODO fix
+        # Just reranker right now
         # First extract best DAT
         best_d, d_prob = max(self.user_dat, key=operator.itemgetter(1))  # argmax
         assert(best_d is not None)
@@ -226,7 +234,7 @@ class SimpleTurnState(object):
             actions_scored[a] = score_mult_args(scores)
         best_a = max(actions_scored, key=operator.itemgetter(1))
 
-        # Force some consistency and reinterpretation
+        # TODO Force some consistency and reinterpretation
         # TODO use probabilistic attitude e.g. Subtract some probability mass from Reject and distribute it to deny.
         if isinstance(best_a, Reject):
             try:
