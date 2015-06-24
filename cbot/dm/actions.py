@@ -102,7 +102,7 @@ class NoOp(BaseAction):
         return [NoOp("system")]
 
     def act(self):
-        return
+        return None
 
     def description(self):
         return "I just do nothing."
@@ -150,7 +150,8 @@ class Inform(BaseAction):
             # FIXME TODO use knowledge base end extract missing operands for triplets
             # for example (sacramento, is_capital, ?) -> (sacramento, is_capital, California)
             if not all((c is None for c in triplet)):
-                informs.append(Inform("system", args=triplet))
+                args = dict(zip(('entity', 'relation', 'value'), triplet))
+                informs.append(Inform("system", args=args))
         return informs
 
     def description(self):
@@ -184,21 +185,26 @@ class WhatAsk(BaseAction):
         incomplete_mentions = [(m, prob) for m, prob in state.user_mentions.iteritems() if None in m]
         # TODO determine if how, where, what, who is the best
         for m in incomplete_mentions:
-            questions.append(WhatAsk("system", args=m, value=prob, why_features=["User mentions incomplete%s" % str(m)]))
+            args = dict(zip(('entity', 'relation', 'value'), m))
+            questions.append(WhatAsk("system", args=args, value=prob, why_features=["User mentions incomplete%s" % str(m)]))
         qs, probabilities = state.user_mentions.keys(), state.user_mentions.values()
+        norm = sum(probabilities)
+        probabilities = [ p / norm for p in probabilities]
         action_distribution = stats.rv_discrete(name='custm', values=(range(len(qs)), probabilities))
         sample_size = min(mentions_sample, qs)
         selected_mentions = [qs[i] for i in action_distribution.rvs(size=sample_size)]
         for m in selected_mentions:
-            questions.append(WhatAsk("system", args=m, why_features=["User mentiones %s" % str(m)]))
+            args = dict(zip(('entity', 'relation', 'value'), m))
+            questions.append(WhatAsk("system", args=args, why_features=["User mentiones %s" % str(m)]))
         return questions
 
     def description(self):
         return "Ask open what question about %s", self.args
 
     def act(self):
-        # TODO nlg: differentiate between person and thing etc
-        return 'What %{verb} %{obj}?' % self.args
+        # TODO nlg
+        # TODO unify entity relation value and subject verb object
+        return 'What %(relation)s %(value)s?' % self.args
 
 
 class YesNoAsk(BaseAction):
@@ -220,8 +226,8 @@ class YesNoAsk(BaseAction):
         # should I do // problem with action selection
         # TODO store in triplet format all the actions
         # TODO confirm some of the fact from knowledgebase
-        questions = [YesNoAsk("system", args=('You', 'did', state.last_user_action)),
-                     YesNoAsk("system", args=('Sacramento', 'isCapitalOf', 'California'))]
+        # questions = [YesNoAsk("system", args=dict(zip(('entity', 'relation', 'value), ('You', 'did', state.last_user_action)))]
+        questions = []
         return questions
 
     def act(self):
@@ -363,7 +369,7 @@ class Hello(BaseAction):
 
     def act(self):
         # TODO use nlg module, sample from more greetings, enable propagate propagation to NLG module
-        self.surface_form = 'Hi!'
+        return 'Hi!'
 
 
 class GoodBye(BaseAction):

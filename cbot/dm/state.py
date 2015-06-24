@@ -214,7 +214,9 @@ class SimpleTurnState(object):
     def update_user_action(self, actions):
         # Just reranker right now
         # First extract best DAT
-        best_d, d_prob = max(self.user_dat.iteritems(), key=operator.itemgetter(1))  # argmax
+        actions_types = set([type(a) for a in actions])
+        user_dat_filtered = [(action_type, prob) for action_type, prob in self.user_dat.iteritems() if action_type in actions_types]
+        best_d, d_prob = max(user_dat_filtered, key=operator.itemgetter(1))  # argmax
         assert(best_d is not None)
         matching_d_actions = [a for a in actions if isinstance(a, best_d)]
         assert(len(matching_d_actions) > 0)
@@ -255,12 +257,9 @@ class SimpleTurnState(object):
                     pass   # keep Reject
 
         self.user_actions[type(best_a)] = best_a
-
         self.user_vs_system_history.append(True)  # user input
-        assert(len(self.user_actions) + len(self.system_actions) == len(self.user_vs_system_history))
 
     def update_system_action(self, action):
         self.system_actions[type(action)] = action
-        self.user_vs_system_history.append(False)  # user input
+        self.user_vs_system_history.append(False)  # system input
         self.system_mentions.extend(action.args.values())
-        assert(len(self.user_actions) + len(self.system_actions) == len(self.user_vs_system_history))

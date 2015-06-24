@@ -38,11 +38,14 @@ class RuleBasedPolicy(object):
             actions.extend(action_type.reaction_factory(self.state))
 
         probabilities = [a.value for a in actions]
+        norm = sum(probabilities)
+        probabilities = [p / norm for p in probabilities]
         action_index_distribution = stats.rv_discrete(name='custm', values=(range(len(actions)), probabilities))
-        sample_a = actions[action_index_distribution.rvs(size=1)]
+        index = action_index_distribution.rvs(size=1)[0]
+        sample_a = actions[index]
 
         self.state.update_system_action(sample_a)
-        sample_a.act()
+        return sample_a.act()
 
     def update_state(self, utt):
         """Perform NLU preprocessing before updating the state"""

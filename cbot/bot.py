@@ -129,7 +129,7 @@ class ChatBotConnector(Greenlet):
         self.logger = logging.getLogger(self.__class__.__name__ + str(self.id))
         connect_logger(self.logger, self.context)
         self.response = response_cb
-        self.should_run = True  # change is based on the messages
+        self.should_run = lambda: True  # change is based on the messages
 
         self.bot = ChatBot(bot_back_port, user_front_port, str(self.id))
         self.bot.start()
@@ -144,7 +144,7 @@ class ChatBotConnector(Greenlet):
     def _run(self):
         self.logger.debug('connector run started')
         try:
-            while self.should_run:
+            while self.should_run():
                 self.logger.debug('ChatBotConnector before poll')
                 socks = dict(self.poller.poll())
                 self.logger.debug('ChatBotConnector after poll')
@@ -158,7 +158,7 @@ class ChatBotConnector(Greenlet):
             self.logger.debug("ChatBotConnector finished")
 
     def finalize(self, msg):
-        self.should_run = False
+        self.should_run = lambda: False
 
 
 class ChatBot(multiprocessing.Process):
@@ -180,7 +180,7 @@ class ChatBot(multiprocessing.Process):
         self.input_port = input_port
         self.output_port = output_port
 
-        self.should_run = True
+        self.should_run = lambda: True
 
         self.logger, self.kb, self.policy = None, None, None
 
@@ -206,7 +206,7 @@ class ChatBot(multiprocessing.Process):
             return msg
         else:  # Hacks
             if self.godot in socks and socks[self.godot] == zmq.POLLIN:
-                self.should_run = False
+                self.should_run = lambda: False
             if self.req_stat in socks and socks[self.req_stat] == zmq.POLLIN:
                 _, stat_req = self.req_stat.recv().split()
                 assert stat_req == 'request', 'stat_req %s' % stat_req
@@ -236,7 +236,7 @@ class ChatBot(multiprocessing.Process):
         self.osocket = self.context.socket(zmq.PUB)
         self.req_stat = self.context.socket(zmq.SUB)
         self.req_stat.setsockopt_string(zmq.SUBSCRIBE, 'stat_%s' % self.name)
-        self.godot = self.context.socket(zmq.SUB)
+        self.godot = self.context.socket(zmq.SUB)  # https://en.wikipedia.org/wiki/Waiting_for_Godot
         self.godot.setsockopt_string(zmq.SUBSCRIBE, 'die')
         self.isocket.connect('tcp://127.0.0.1:%d' % self.input_port)
         self.req_stat.connect('tcp://127.0.0.1:%d' % self.input_port)
@@ -265,7 +265,7 @@ class ChatBot(multiprocessing.Process):
     def chatbot_loop(self):
         self.logger.info('Entering loop')
         self.logger.debug('Chatbot properties:\n%s' % str(self))
-        while self.should_run:
+        while self.should_run():
             msg = self.receive_msg()
             if msg is None:
                 continue
