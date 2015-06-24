@@ -1,6 +1,6 @@
-The webapp present is the cleverbot demo
+The web application presents the cleverbot demo.
 
-cleverbot.com: Still in registering process
+cleverbot.com:
 ipv4: 147.251.253.222
 ipv6: fe80::93ff:fefb:fdde
 port: 5000  # debugging
