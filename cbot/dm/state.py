@@ -198,7 +198,7 @@ class SimpleTurnState(object):
         finished, indexes, items_count = False, [0] * n, [len(dat_ngrams) for dat_ngrams in self._dat_ngrams]
         dat_ngrams = [dat_ngrams.items() for dat_ngrams in self._dat_ngrams]
         while not finished:
-            ngram_obs_probs = (dat_ngrams[i][indexes[i]] for i in range(n))
+            ngram_obs_probs = (dat_ngrams[i][indexes[i]] for i in range(n))  # TODO index out of range
             ngram, ngram_obs_probs = zip(*list(ngram_obs_probs))
             ngram_obs_prob = sum(ngram_obs_probs)
             ngram_prob = self.dat_lm(ngram)

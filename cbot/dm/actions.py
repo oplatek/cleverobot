@@ -187,15 +187,16 @@ class WhatAsk(BaseAction):
         for m in incomplete_mentions:
             args = dict(zip(('entity', 'relation', 'value'), m))
             questions.append(WhatAsk("system", args=args, value=prob, why_features=["User mentions incomplete%s" % str(m)]))
-        qs, probabilities = state.user_mentions.keys(), state.user_mentions.values()
-        norm = sum(probabilities)
-        probabilities = [ p / norm for p in probabilities]
-        action_distribution = stats.rv_discrete(name='custm', values=(range(len(qs)), probabilities))
-        sample_size = min(mentions_sample, qs)
-        selected_mentions = [qs[i] for i in action_distribution.rvs(size=sample_size)]
-        for m in selected_mentions:
-            args = dict(zip(('entity', 'relation', 'value'), m))
-            questions.append(WhatAsk("system", args=args, why_features=["User mentiones %s" % str(m)]))
+        if len(state.user_mentions) > 0:
+            qs, probabilities = state.user_mentions.keys(), state.user_mentions.values()
+            norm = sum(probabilities)
+            probabilities = [ p / norm for p in probabilities]
+            action_distribution = stats.rv_discrete(name='custm', values=(range(len(qs)), probabilities))
+            sample_size = min(mentions_sample, qs)
+            selected_mentions = [qs[i] for i in action_distribution.rvs(size=sample_size)]
+            for m in selected_mentions:
+                args = dict(zip(('entity', 'relation', 'value'), m))
+                questions.append(WhatAsk("system", args=args, why_features=["User mentiones %s" % str(m)]))
         return questions
 
     def description(self):
