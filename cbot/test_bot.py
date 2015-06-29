@@ -103,14 +103,11 @@ class ChatBotConnectorTest(unittest.TestCase):
     def test_chatbot_loop(self):
         log = logging.getLogger(str(self.__class__) + '.test_chatbot_loop')
         c = ChatBotConnector(self.callback, self.bot_front, self.bot_back, self.user_front, self.user_back)
-        log.info('cannot sleep just after forking the process because it freezes the forking process')
-        log.debug('after nap')
         c.start()
+        log.debug('sending msg')
         c.send(wrap_msg('test'))
         c.send(wrap_msg('test1'))
-
         self.assertIsNotNone(self.msg)
-
         c.kill(1.0)
 
 

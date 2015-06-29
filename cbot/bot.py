@@ -122,13 +122,14 @@ class ChatBotConnector(Greenlet):
         self.pub2bot.sndhwm = 1100000  # set SNDHWM, so we don't drop messages for slow subscribers
         self.sub2bot = self.context.socket(zmq.SUB)
         self.sub2bot.setsockopt_string(zmq.SUBSCRIBE, '%s' % name)
-        self.pub2bot.connect('tcp://127.0.0.1:%d' % bot_front_port)
-        self.sub2bot.connect('tcp://127.0.0.1:%d' % user_back_port)
         self.init_sync_signal = self.context.socket(zmq.SUB)
         self.init_sync_signal.setsockopt_string(zmq.SUBSCRIBE, 'init_sync_%s' % name)
         self.poller = zmqg.Poller()
         self.poller.register(self.sub2bot, zmq.POLLIN)
         self.poller.register(self.init_sync_signal, zmq.POLLIN)
+        self.pub2bot.connect('tcp://127.0.0.1:%d' % bot_front_port)
+        self.sub2bot.connect('tcp://127.0.0.1:%d' % user_back_port)
+        self.init_sync_signal.connect('tcp://127.0.0.1:%d' % user_back_port)
 
         self.logger = logging.getLogger(self.__class__.__name__ + str(name))
         connect_logger(self.logger, self.context)
@@ -150,6 +151,7 @@ class ChatBotConnector(Greenlet):
             self.pub2bot.send_string(init_msg)
             socks = dict(self.poller.poll(timeout=interval))
             if self.init_sync_signal in socks and socks[self.init_sync_signal] == zmq.POLLIN:
+                self.init_sync_signal.recv()
                 self.logger.debug('init handshake successful after %d ms' % waiting_time)
                 return True
             waiting_time += interval
@@ -169,7 +171,7 @@ class ChatBotConnector(Greenlet):
         self.pub2bot.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
 
     def _run(self):
-        self.logger.debug('%s started listening for ChatBot msgs' % str(self.__class__.__name__) + self.name)
+        self.logger.debug('%s started listening for ChatBot msgs ' % str(self.__class__.__name__) + self.name)
         try:
             while self.should_run():
                 self.logger.debug('ChatBotConnector before poll')
@@ -226,30 +228,26 @@ class ChatBot(multiprocessing.Process):
         if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
             _, msg = topic_msg_to_json(self.isocket.recv())
             self.logger.info('%s,', jsonapi.dumps(msg))
-
-            # hacks TODO move to hancrafted - control policy
+            # hack - control signal from user
             if msg['utterance'].lower() == 'your id' or msg['utterance'].lower() == 'your id, please!':
                 self.send_msg(self.name)
                 return None
             return msg
-        else:  # Hacks
-            if self.die_signal in socks and socks[self.die_signal] == zmq.POLLIN:
-                self.should_run = lambda: False
-            if self.init_sync_signal in socks and socks[self.init_sync_signal] == zmq.POLLIN:
-                self.init_sync_signal.recv()
-                self.logger.debug('Sync_init msg received. Sending confirmation.')
-                self.osocket.send_string('init_sync_%s sync_confirmation' % self.name)
-
-            if self.req_stat in socks and socks[self.req_stat] == zmq.POLLIN:
-                _, stat_req = self.req_stat.recv().split()
-                assert stat_req == 'request', 'stat_req %s' % stat_req
-                stats = {
-                    'time': time.time(),
-                    'history_len': len(self.policy.state.history)  # use other properties of policy
-                }
-                self.logger.debug('ChatBot %s received stats request', self.name)
-                self.osocket.send_string('stat_%s %s' % (self.name, jsonapi.dumps(stats)))
-            return None
+        # Control signals
+        if self.die_signal in socks and socks[self.die_signal] == zmq.POLLIN:
+            self.should_run = lambda: False
+            self.die_signal.recv()
+        if self.init_sync_signal in socks and socks[self.init_sync_signal] == zmq.POLLIN:
+            self.init_sync_signal.recv()
+            self.logger.debug('Sync_init msg received. Sending confirmation.')
+            self.osocket.send_string('init_sync_%s sync_confirmation' % self.name)
+        if self.req_stat in socks and socks[self.req_stat] == zmq.POLLIN:
+            _, stat_req = self.req_stat.recv().split()
+            assert stat_req == 'request', 'stat_req %s' % stat_req
+            self.logger.debug('ChatBot %s received stats request', self.name)
+            stats = {'time': time.time(), 'history_len': len(self.policy.state.history)}
+            self.osocket.send_string('stat_%s %s' % (self.name, jsonapi.dumps(stats)))
+        return None
 
     def send_msg(self, utt):
         if utt is not None:
