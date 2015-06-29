@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import pickle
+import logging
 from collections import defaultdict
 
 
@@ -66,7 +67,8 @@ class Perceptron(object):
             self.weights[feat] = new_feat_weights
 
     def save(self, path):
-        print "Saving model to %s" % path
+        log = logging.getLogger(self.__class__.__name__)
+        log.info("Saving model to %s" % path)
         pickle.dump(self.weights, open(path, 'w'))
 
     def load(self, path):
