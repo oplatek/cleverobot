@@ -315,7 +315,7 @@ class ChatBot(multiprocessing.Process):
 
 if __name__ == '__main__':
     """Chatbot demo without zmq and multiprocessing."""
-    bot = ChatBot(input_port=-6, output_port=-66, name="Command line chatbot")
+    bot = ChatBot(name=str(123), input_port=-6, output_port=-66)
 
     def get_msg():
         utt = raw_input("Tell me\n")

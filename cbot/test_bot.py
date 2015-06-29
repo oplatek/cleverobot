@@ -111,55 +111,51 @@ class ChatBotConnectorTest(unittest.TestCase):
         c.kill(1.0)
 
 
-class ChatBotTest(unittest.TestCase):
+class ChatBotOneAnswerTest(unittest.TestCase):
     def setUp(self):
         log = logging.getLogger(self.__class__.__name__ + '.setUp')
-        self.bot_front, self.bot_back, self.user_front, self.user_back, self.user2bot_sync = 10001, 10002, 10003, 10004, 10005
-        self.user_device = forwarder_device_start(self.user_front, self.user_back)
-        self.bot_device = forwarder_device_start(self.bot_front, self.bot_back)
-        self.context = zmq.Context()
-        self.sub_socket = self.context.socket(zmq.SUB)
-        self.pub_socket = self.context.socket(zmq.PUB)
-        self.sub_socket.setsockopt(zmq.SUBSCRIBE, b'')
-        self.sub_socket.connect("tcp://127.0.0.1:%d" % self.user_back)
-        self.pub_socket.connect("tcp://127.0.0.1:%d" % self.bot_front)
-        self.poller = zmq.Poller()
-        self.poller.register(self.sub_socket, zmq.POLLIN)
-        self.logger_process = Process(target=log_loop)
-        self.logger_process.start()
-        name = uuid.uuid4()
-        self.b = ChatBot(name, self.bot_back, self.user_front)
-        self.init_sync_signal = self.context.socket(zmq.SUB)
-        self.init_sync_signal.connect("tcp://127.0.0.1:%d" % self.user_back)
-        self.init_sync_signal.setsockopt(zmq.SUBSCRIBE, b'init_sync_%s' % self.b.name)
+        seed = random.randint(0, sys.maxint)
+        print('Using seed: %d' % seed)
+        log.info('Using seed: %d' % seed)
+        random.seed(seed)
+        self.should_run = True
+        self.output, self.input = None, None
+        self.test_start = datetime.datetime.now()
+        self.timeout = 1.0
+        self.bot = ChatBot(name=str(123), input_port=-6, output_port=-66)
 
-        log.debug('bot_front: %s, bot_back: %s, user_front: %s, user_back: %s' % (
-            self.bot_front, self.bot_back, self.user_front, self.user_back))
-        self.b.start()
+        def should_run():
+            if not self.should_run:
+                return False
+            if (datetime.datetime.now() - self.test_start).total_seconds() > self.timeout:
+                return False
+            return True
 
-    def tearDown(self):
-        log = logging.getLogger(self.__class__.__name__)
-        log.debug('Tearing down sleeping in order to give chance the msg to arrive')
-        time.sleep(0.2)
-        self.logger_process.terminate()
-        self.b.terminate()
-        log.debug('Chatbot terminated')
-        self.user_device.join(0.1)
-        self.bot_device.join(0.1)
-        log.debug('Everything torn down.')
+        self.bot.should_run = should_run
 
-    def test_synchronisation_no_deadlock(self):
-        self._perform_init_sync()
+        def send(msg):
+            self.output = msg
+            self.should_run = False
 
-    def test_is_responding(self):
-        sys_msg, user_msg = None, {'time': str(datetime.datetime.utcnow()), 'user': 'human', 'utterance': 'hi'}
-        self._perform_init_sync()
-        self.pub_socket.send_string('%s %s' % (self.b.name, jsonapi.dumps(user_msg)))
-        socks = dict(self.poller.poll(timeout=200))
-        if self.sub_socket in socks and socks[self.sub_socket] == zmq.POLLIN:
-            _, sys_msg = topic_msg_to_json(self.sub_socket.recv())
-        self.assertIsNotNone(sys_msg)
-        self.assertItemsEqual(self.b.__class__.__name__, sys_msg['user'], msg='Message from user %s' % sys_msg['user'])
+        self.bot.send_msg = send
+
+        def receive_msg():
+            return {'time': time.time(), 'user': 'human', 'utterance': self.input}
+
+        self.bot.receive_msg = receive_msg
+        log.debug('Test started at %s with timeout %s' % (self.test_start, self.timeout))
+        self.bot.single_process_init()
+        log.debug("Bot initialized")
+
+    def test_hi(self):
+        log = logging.getLogger(self.__class__.__name__ + '.setUp')  # TODO
+        self.assertIsNone(self.output)
+        self.input = 'hi'
+        print("User: %s" % self.input)
+        self.bot.chatbot_loop()
+        self.assertIsNotNone(self.output)
+        print("System: %s" % self.output)
+
 
 
 if __name__ == '__main__':
