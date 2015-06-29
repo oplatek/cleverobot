@@ -117,32 +117,59 @@ class ChatBotConnector(Greenlet):
             self.context = ctx
         else:
             self.context = zmqg.Context()
+        name = str(int(uuid.uuid4()))
         self.pub2bot = self.context.socket(zmq.PUB)
+        self.pub2bot.sndhwm = 1100000  # set SNDHWM, so we don't drop messages for slow subscribers
         self.sub2bot = self.context.socket(zmq.SUB)
-        self.id = uuid.uuid4()
-        self.sub2bot.setsockopt_string(zmq.SUBSCRIBE, '%s' % self.id)
+        self.sub2bot.setsockopt_string(zmq.SUBSCRIBE, '%s' % name)
         self.pub2bot.connect('tcp://127.0.0.1:%d' % bot_front_port)
         self.sub2bot.connect('tcp://127.0.0.1:%d' % user_back_port)
+        self.init_sync_signal = self.context.socket(zmq.SUB)
+        self.init_sync_signal.setsockopt_string(zmq.SUBSCRIBE, 'init_sync_%s' % name)
         self.poller = zmqg.Poller()
         self.poller.register(self.sub2bot, zmq.POLLIN)
+        self.poller.register(self.init_sync_signal, zmq.POLLIN)
 
-        self.logger = logging.getLogger(self.__class__.__name__ + str(self.id))
+        self.logger = logging.getLogger(self.__class__.__name__ + str(name))
         connect_logger(self.logger, self.context)
         self.response = response_cb
         self.should_run = lambda: True  # change is based on the messages
 
-        self.bot = ChatBot(bot_back_port, user_front_port, str(self.id))
-        self.bot.start()
+        self.bot = ChatBot(name, bot_back_port, user_front_port)
+        self.bot.start() # TODO should I move it to _run()
+        if self._init_handshake():
+            self.logger.debug('Connector2bot synchronised with ChatBot.')
+        else:
+            self.finalize()
+
+    def _init_handshake(self, num_handshakes=10, interval=10):
+        waiting_time = 0
+        for i in range(num_handshakes):
+            init_msg = 'init_sync_%s probing connection' % self.name
+            self.logger.debug('cbc sending msg: %s' % init_msg)
+            self.pub2bot.send_string(init_msg)
+            socks = dict(self.poller.poll(timeout=interval))
+            if self.init_sync_signal in socks and socks[self.init_sync_signal] == zmq.POLLIN:
+                self.logger.debug('init handshake successful after %d ms' % waiting_time)
+                return True
+            waiting_time += interval
+        self.logger.debug('init handshake unsuccessful after %d ms' % waiting_time)
+        return False
+
+    @property
+    def name(self):
+        return self.bot.name
 
     def send(self, msg):
+        assert 'utterance' in msg
         msg['user'] = 'human'
         msg['time'] = time.time()
-        msg['session'] = str(self.id)
+        msg['session'] = self.name
         self.logger.debug('ChatBotConnector %s', msg)
-        self.pub2bot.send_string('%s %s' % (self.id, jsonapi.dumps(msg)))
+        self.pub2bot.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
 
     def _run(self):
-        self.logger.debug('connector run started')
+        self.logger.debug('%s started listening for ChatBot msgs' % str(self.__class__.__name__) + self.name)
         try:
             while self.should_run():
                 self.logger.debug('ChatBotConnector before poll')
@@ -150,15 +177,18 @@ class ChatBotConnector(Greenlet):
                 self.logger.debug('ChatBotConnector after poll')
                 if self.sub2bot in socks and socks[self.sub2bot] == zmq.POLLIN:
                     _, msg = topic_msg_to_json(self.sub2bot.recv())
-                    self.logger.debug('ChatBotConnector %s received bot msg %s', self.id, msg)
-                    self.response(msg, self.id)
+                    self.logger.debug('ChatBotConnector %s received bot msg %s', self.name, msg)
+                    self.response(msg, self.name)
+        except Exception as e:
+            self.logger.exception(e)
         finally:
-            self.pub2bot.send_string('die die')
-            self.bot.terminate()
-            self.logger.debug("ChatBotConnector finished")
+            self.finalize()
 
-    def finalize(self, msg):
+    def finalize(self):
         self.should_run = lambda: False
+        self.pub2bot.send_string('die_%s die' % self.name)
+        self.bot.terminate()
+        self.logger.debug("ChatBotConnector finished")
 
 
 class ChatBot(multiprocessing.Process):
@@ -173,21 +203,19 @@ class ChatBot(multiprocessing.Process):
     of the chatbot.
     """
 
-    def __init__(self, input_port, output_port, name):
+    def __init__(self, name, input_port, output_port):
         super(self.__class__, self).__init__()
-        self.name = name
-
-        self.input_port = input_port
-        self.output_port = output_port
+        self.name = str(int(name))
+        assert isinstance(input_port, int) and isinstance(output_port, int)
+        self.input_port, self.output_port = input_port, output_port
 
         self.should_run = lambda: True
-
         self.logger, self.kb, self.policy = None, None, None
 
-    def __str__(self):
+    def __repr__(self):
         super_info = super(self.__class__).__str__()
-        str_repr = str(self.__class__) + ": " + self.name
-        str_repr += '\n input - output port: %s - %s\n' % (self.input_port, self.output_port)
+        str_repr = '%s: %s' % (str(self.__class__), self.name)
+        str_repr += '\n input - output ports: %d - %d\n' % (self.input_port, self.output_port)
         str_repr += super_info
         return str_repr
 
@@ -205,8 +233,13 @@ class ChatBot(multiprocessing.Process):
                 return None
             return msg
         else:  # Hacks
-            if self.godot in socks and socks[self.godot] == zmq.POLLIN:
+            if self.die_signal in socks and socks[self.die_signal] == zmq.POLLIN:
                 self.should_run = lambda: False
+            if self.init_sync_signal in socks and socks[self.init_sync_signal] == zmq.POLLIN:
+                self.init_sync_signal.recv()
+                self.logger.debug('Sync_init msg received. Sending confirmation.')
+                self.osocket.send_string('init_sync_%s sync_confirmation' % self.name)
+
             if self.req_stat in socks and socks[self.req_stat] == zmq.POLLIN:
                 _, stat_req = self.req_stat.recv().split()
                 assert stat_req == 'request', 'stat_req %s' % stat_req
@@ -236,14 +269,20 @@ class ChatBot(multiprocessing.Process):
         self.osocket = self.context.socket(zmq.PUB)
         self.req_stat = self.context.socket(zmq.SUB)
         self.req_stat.setsockopt_string(zmq.SUBSCRIBE, 'stat_%s' % self.name)
-        self.godot = self.context.socket(zmq.SUB)  # https://en.wikipedia.org/wiki/Waiting_for_Godot
-        self.godot.setsockopt_string(zmq.SUBSCRIBE, 'die')
+        self.die_signal = self.context.socket(zmq.SUB)
+        self.die_signal.setsockopt_string(zmq.SUBSCRIBE, 'die_%s' % self.name)
+        self.init_sync_signal = self.context.socket(zmq.SUB)
+        self.init_sync_signal.setsockopt_string(zmq.SUBSCRIBE, 'init_sync_%s' % self.name)
         self.isocket.connect('tcp://127.0.0.1:%d' % self.input_port)
         self.req_stat.connect('tcp://127.0.0.1:%d' % self.input_port)
+        self.init_sync_signal.connect('tcp://127.0.0.1:%d' % self.input_port)
+        self.die_signal.connect('tcp://127.0.0.1:%d' % self.input_port)
         self.osocket.connect('tcp://127.0.0.1:%d' % self.output_port)
         self.poller = zmq.Poller()
         self.poller.register(self.isocket, zmq.POLLIN)
         self.poller.register(self.req_stat, zmq.POLLIN)
+        self.poller.register(self.init_sync_signal, zmq.POLLIN)
+        self.poller.register(self.die_signal, zmq.POLLIN)
 
     def single_process_init(self):
         self.logger = logging.getLogger(self.__class__.__name__ + str(self.name))
@@ -253,18 +292,20 @@ class ChatBot(multiprocessing.Process):
         self.kb.load_default_models()
         self.kb.add_triplets(data)
 
-        dat_trans_prob = None  # TODO laod transition probabilities, update them online for well accepted dialogues
+        dat_trans_prob = None  # TODO load transition probabilities, update them online for well accepted dialogues
         self.policy = RuleBasedPolicy(self.kb, SimpleTurnState(dat_trans_prob))
 
     def run(self):
-        self.zmq_init()
         self.single_process_init()
+        self.logger.debug('Starting zmq_init synchronisation.')
+        self.zmq_init()
+        self.logger.debug('Connect zmq logger')
         connect_logger(self.logger, self.context)
+        self.logger.debug('Chatbot properties:\n%s' % str(self))
         self.chatbot_loop()
 
     def chatbot_loop(self):
-        self.logger.info('Entering loop')
-        self.logger.debug('Chatbot properties:\n%s' % str(self))
+        self.logger.info('Entering ChatBot loop: waiting for user input')
         while self.should_run():
             msg = self.receive_msg()
             if msg is None:

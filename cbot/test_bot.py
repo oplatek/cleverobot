@@ -6,11 +6,13 @@ import unittest
 import logging
 import time
 import random
+import uuid
 import gevent
-from cbot.bot import ChatBot, ChatBotConnector, forwarder_device_start, log_loop, connect_logger
+from cbot.bot import ChatBot, ChatBotConnector, forwarder_device_start, log_loop, connect_logger, topic_msg_to_json
 import datetime
 import sys
 import zmq
+from zmq.utils import jsonapi
 
 
 def wrap_msg(utt):
@@ -18,10 +20,12 @@ def wrap_msg(utt):
 
 
 class ChatBotRunLoopTest(unittest.TestCase):
-    @staticmethod
-    def send_msg(responses):
+    @classmethod
+    def send_msg(cls, responses):
+        log = logging.getLogger(cls.__name__)
+
         def log_and_append(x):
-            print x
+            log.debug(x)
             responses.append(x)
 
         return log_and_append
@@ -50,14 +54,14 @@ class ChatBotRunLoopTest(unittest.TestCase):
         self.bot.send_msg = ChatBotRunLoopTest.send_msg(self.responses)
 
     def test_loop(self):
+        log = logging.getLogger(self.__class__.__name__ + '.test_loop')
         self.user_utt = ['I know Little Richard']
         self.bot.run()
         self.assertTrue(len(self.responses) > 0)
-        print self.responses
+        log.info(self.responses)
 
 
 class LoggerTest(unittest.TestCase):
-
     def test_process_zmq_logger(self):
         log_process = Process(target=log_loop)
         log_process.start()
@@ -81,7 +85,7 @@ class ChatBotConnectorTest(unittest.TestCase):
         self.logger_process = Process(target=log_loop)
         self.logger_process.start()
         self.msg = None
-        
+
         def receive(m):
             self.msg = m
 
@@ -97,15 +101,12 @@ class ChatBotConnectorTest(unittest.TestCase):
         self.logger_process.terminate()
 
     def test_chatbot_loop(self):
+        log = logging.getLogger(str(self.__class__) + '.test_chatbot_loop')
         c = ChatBotConnector(self.callback, self.bot_front, self.bot_back, self.user_front, self.user_back)
-        print 'cannot sleep just after forking the process because it freezes the forking process'
-        time.sleep(3.0)
-        print 'after nap'
+        log.info('cannot sleep just after forking the process because it freezes the forking process')
+        log.debug('after nap')
         c.start()
-        gevent.sleep(3.0)
         c.send(wrap_msg('test'))
-        # c.run()  # works fine without gevent
-        time.sleep(0.1)
         c.send(wrap_msg('test1'))
 
         self.assertIsNotNone(self.msg)
@@ -114,9 +115,9 @@ class ChatBotConnectorTest(unittest.TestCase):
 
 
 class ChatBotTest(unittest.TestCase):
-
     def setUp(self):
-        self.bot_front, self.bot_back, self.user_front, self.user_back = 10001, 10002, 10003, 10004
+        log = logging.getLogger(self.__class__.__name__ + '.setUp')
+        self.bot_front, self.bot_back, self.user_front, self.user_back, self.user2bot_sync = 10001, 10002, 10003, 10004, 10005
         self.user_device = forwarder_device_start(self.user_front, self.user_back)
         self.bot_device = forwarder_device_start(self.bot_front, self.bot_back)
         self.context = zmq.Context()
@@ -129,30 +130,42 @@ class ChatBotTest(unittest.TestCase):
         self.poller.register(self.sub_socket, zmq.POLLIN)
         self.logger_process = Process(target=log_loop)
         self.logger_process.start()
-        self.b = ChatBot(self.bot_back, self.user_front, 'test chatbot')
+        name = uuid.uuid4()
+        self.b = ChatBot(name, self.bot_back, self.user_front)
+        self.init_sync_signal = self.context.socket(zmq.SUB)
+        self.init_sync_signal.connect("tcp://127.0.0.1:%d" % self.user_back)
+        self.init_sync_signal.setsockopt(zmq.SUBSCRIBE, b'init_sync_%s' % self.b.name)
+
+        log.debug('bot_front: %s, bot_back: %s, user_front: %s, user_back: %s' % (
+            self.bot_front, self.bot_back, self.user_front, self.user_back))
         self.b.start()
-        print 'Initiation finished sleeping for a while'
-        time.sleep(3.0)
 
     def tearDown(self):
-        print 'Tearing down sleeping in order to give chance the msg to arrive'
+        log = logging.getLogger(self.__class__.__name__)
+        log.debug('Tearing down sleeping in order to give chance the msg to arrive')
         time.sleep(0.2)
         self.logger_process.terminate()
         self.b.terminate()
+        log.debug('Chatbot terminated')
         self.user_device.join(0.1)
         self.bot_device.join(0.1)
+        log.debug('Everything torn down.')
+
+    def test_synchronisation_no_deadlock(self):
+        self._perform_init_sync()
 
     def test_is_responding(self):
-        message = None
-        msg = {'time': str(datetime.datetime.utcnow()), 'user': 'human', 'utterance': 'hi'}
-        self.pub_socket.send_json(msg)
+        sys_msg, user_msg = None, {'time': str(datetime.datetime.utcnow()), 'user': 'human', 'utterance': 'hi'}
+        self._perform_init_sync()
+        self.pub_socket.send_string('%s %s' % (self.b.name, jsonapi.dumps(user_msg)))
         socks = dict(self.poller.poll(timeout=200))
         if self.sub_socket in socks and socks[self.sub_socket] == zmq.POLLIN:
-            message = self.sub_socket.recv_json()
-        self.assertIsNotNone(message)
-        self.assertItemsEqual(self.b.__class__.__name__, message['user'], msg='messageuser %s' % message['user'])
+            _, sys_msg = topic_msg_to_json(self.sub_socket.recv())
+        self.assertIsNotNone(sys_msg)
+        self.assertItemsEqual(self.b.__class__.__name__, sys_msg['user'], msg='Message from user %s' % sys_msg['user'])
 
 
 if __name__ == '__main__':
     logging.basicConfig(stream=sys.stderr)
+    logging.getLogger("ChatBotTest.setUp").setLevel(logging.DEBUG)
     unittest.main()
