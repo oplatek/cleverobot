@@ -1,6 +1,6 @@
 pyzmq
 nltk
 numpy
-scipy
+# scipy installed via apt-get on Ubuntu
 nose
 simplejson
