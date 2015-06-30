@@ -19,48 +19,6 @@ def wrap_msg(utt):
     return {'time': time.time(), 'user': 'human', 'utterance': utt}
 
 
-class ChatBotRunLoopTest(unittest.TestCase):
-    @classmethod
-    def send_msg(cls, responses):
-        log = logging.getLogger(cls.__name__)
-
-        def log_and_append(x):
-            log.debug(x)
-            responses.append(x)
-
-        return log_and_append
-
-    def should_run(self):
-        return self.run
-
-    def get_next_utt(self):
-        if self.i < len(self.user_utt):
-            utt = self.user_utt[self.i]
-        else:
-            self.run = False
-            utt = 'Good bye'
-        self.i += 1
-        return wrap_msg(utt)
-
-    def setUp(self):
-        random.seed(198711)
-        self.sent = []
-        self.bot = ChatBot(input_port=-6, output_port=-66, name='test chatbot')
-        self.run = True
-        self.i = 0
-        self.bot.should_run = self.should_run
-        self.bot.receive_msg = self.get_next_utt
-        self.responses = []
-        self.bot.send_msg = ChatBotRunLoopTest.send_msg(self.responses)
-
-    def test_loop(self):
-        log = logging.getLogger(self.__class__.__name__ + '.test_loop')
-        self.user_utt = ['I know Little Richard']
-        self.bot.run()
-        self.assertTrue(len(self.responses) > 0)
-        log.info(self.responses)
-
-
 class LoggerTest(unittest.TestCase):
     def test_process_zmq_logger(self):
         log_process = Process(target=log_loop)
@@ -106,7 +64,6 @@ class ChatBotConnectorTest(unittest.TestCase):
         c.start()
         log.debug('sending msg')
         c.send(wrap_msg('test'))
-        c.send(wrap_msg('test1'))
         self.assertIsNotNone(self.msg)
         c.kill(1.0)
 
@@ -153,7 +110,21 @@ class ChatBotOneAnswerTest(unittest.TestCase):
         self.input = 'hi'
         print("User: %s" % self.input)
         self.bot.chatbot_loop()
+        print("System: %s" % self.output)
         self.assertIsNotNone(self.output)
+
+    def test_inform_entity(self):
+        self.assertIsNone(self.output)
+        self.input = 'I know Little Richard'
+        print("User: %s" % self.input)
+        self.bot.chatbot_loop()
+        print("System: %s" % self.output)
+
+    def test_test_input(self):
+        self.assertIsNone(self.output)
+        self.input = 'test'
+        print("User: %s" % self.input)
+        self.bot.chatbot_loop()
         print("System: %s" % self.output)
 
 
