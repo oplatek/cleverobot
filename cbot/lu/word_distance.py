@@ -1,7 +1,7 @@
-class WordDistance:
+class WordDistance(object):
     '''Computes the min edit operations from target to source.'''
 
-    def __init__(self, source, target, penalties=None):
+    def __init__(self, source, target, ins_pen=1, sub_pen=2, del_pen=1):
         '''Init the object for computing distance shortest common path etc..
 
         :param target: a target sequence
@@ -11,9 +11,7 @@ class WordDistance:
         self.s = source
         self.t = target
         self.a = None
-        if penalties is None:
-            penalties = (1, 2, 1)
-        self.pi, self.ps, self.pd = penalties
+        self.pi, self.ps, self.pd = ins_pen, sub_pen, del_pen
 
     def compute_table(self):
         '''Compute table by dynamic programming
@@ -67,7 +65,7 @@ class WordDistance:
         rsource, rtarget = list(self.s), list(self.t)
         rsource.reverse()
         rtarget.reverse()
-        for l in xrange(d):
+        for _ in xrange(d):
             if i == 0:
                 p.append((None, rtarget[j-1]))
                 j -= 1

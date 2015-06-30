@@ -10,7 +10,6 @@ import pickle
 from collections import defaultdict
 from perceptron import Perceptron
 import logging
-from dependencygraph import DependencyGraph, Node
 
 
 START = ['-START-', '-START2-']
@@ -95,7 +94,7 @@ class PerceptronTagger(object):
                 sc, st = self.train_one(words, tags)
                 c, t = c + sc, t + st
             random.shuffle(sentences)
-            logging.debug("Iter %d: {1}/{2}={3}".format(iter_, c, t, c / t))
+            logging.debug("Iter {0}: {1}/{2}={3}".format(iter_, c, t, c / t))
 
     def save(self, loc=None):
         if loc is None:

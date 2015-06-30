@@ -106,23 +106,21 @@ class SimpleTurnState(object):
 
     @property
     def last_system_action(self):
-        return reversed(self.system_actions).next()
+        if len(self.system_mentions) == 0:
+            return None
+        return next(reversed(self.system_actions))
 
     @property
     def last_user_action(self):
-        return reversed(self.user_actions).next()
+        if len(self.user_actions) == 0:
+            return None
+        return next(reversed(self.user_actions))
 
     @property
     def last_mention(self):
-        return reversed(self.user_mentions).next()
-
-    @property
-    def last_user_action(self):
-        pass
-
-    @property
-    def last_system_action(self):
-        pass
+        if len(self.user_mentions) == 0:
+            return None
+        return next(reversed(self.user_mentions))
 
     @staticmethod
     def extract_mentions(utt, user_mentions, system_mentions):
@@ -160,7 +158,7 @@ class SimpleTurnState(object):
                 continue
             self.user_mentions[triplet] = probability + (1 - probability) * self._trans_prob_mentions
 
-    def update_dat(self, alpha=0.5):
+    def update_dat(self):
         """SLU task of determining Dialogue Act Types (DAT) for utterance.
         Assumes that utt is a sentence or another chunk of words which has unique DAT."""
 
@@ -199,7 +197,7 @@ class SimpleTurnState(object):
         assert len(self._dat_ngrams) == n
         # computing new probabilties of DAT based on ngrams probabilities(observation & LM) from scratch
         finished, indexes, items_count = False, [0] * n, [len(dat_ngrams) for dat_ngrams in self._dat_ngrams]
-        dat_ngrams = [dat_ngrams.items() for dat_ngrams in self._dat_ngrams]
+        dat_ngrams = [dat_ngrms.items() for dat_ngrms in self._dat_ngrams]
         while not finished:
             ngram_obs_probs = (dat_ngrams[i][indexes[i]] for i in range(n))  # TODO index out of range
             ngram, ngram_obs_probs = zip(*list(ngram_obs_probs))
@@ -250,11 +248,11 @@ class SimpleTurnState(object):
                 if last_mention is not None:
                     best_a.args = {deny_who: last_mention}
                 else:
-                    best_a = Hello()  # we are at the beginning so understand Hello() # TODO hack
+                    best_a = Hello("human")  # we are at the beginning so understand Hello() # TODO hack
             else:
                 common_mentions = set(best_a.args.values() & (set(self.user_mentions) | set(self.system_mentions)))
                 if len(common_mentions) > 0:
-                    best_a = Deny()
+                    best_a = Deny("human")
                     best_a.args = dict([(k, v) for k, v in best_a.args if v in common_mentions])
                 else:
                     pass   # keep Reject

@@ -8,7 +8,7 @@ from cbot.lu.word_distance import WordDistance
 class TestWordDistance(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super(TestWordDistance, self).__init__(*args, **kwargs)
-        self.penalties = (1.0, 2.0, 1.0)
+        self.addp, self.subp, self.delp = (1.0, 2.0, 1.0)
         self.dist_data = [
             ([1, 1, 1], [0, 0, 0], 6),
             ([0, 1, ], [0, 0, 0], 3),
@@ -26,13 +26,13 @@ class TestWordDistance(unittest.TestCase):
 
     def test_distance(self):
         for s, t, d in self.dist_data:
-            wd = WordDistance(s, t, self.penalties)
+            wd = WordDistance(s, t, self.addp, self.subp, self.delp)
             d_test = wd.compute_dist()
             self.assertEqual(d_test, d)
 
     def test_path(self):
         for s, t, gold_path in self.path_data:
-            wd = WordDistance(s, t, self.penalties)
+            wd = WordDistance(s, t, self.addp, self.subp, self.delp)
             path = wd.best_path()
             self.assertEqual(path, gold_path)
 

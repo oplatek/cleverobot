@@ -19,7 +19,6 @@ from cbot.kb.kb_data import data
 from cbot.dm.state import SimpleTurnState, Utterance
 from cbot.dm.policy import RuleBasedPolicy
 import cbot.kb as kb
-from cbot.lu.pos import PerceptronTagger
 
 
 LOGGING_ADDRESS = 'tcp://127.0.0.1:6699'
@@ -145,17 +144,17 @@ class ChatBotConnector(Greenlet):
 
     def _init_handshake(self, num_handshakes=10, interval=10):
         waiting_time = 0
-        for i in range(num_handshakes):
+        for _ in range(num_handshakes):
             init_msg = 'init_sync_%s probing connection' % self.name
-            self.logger.debug('cbc sending msg: %s' % init_msg)
+            self.logger.debug('cbc sending msg: %s', init_msg)
             self.pub2bot.send_string(init_msg)
             socks = dict(self.poller.poll(timeout=interval))
             if self.init_sync_signal in socks and socks[self.init_sync_signal] == zmq.POLLIN:
                 self.init_sync_signal.recv()
-                self.logger.debug('init handshake successful after %d ms' % waiting_time)
+                self.logger.debug('init handshake successful after %d ms', waiting_time)
                 return True
             waiting_time += interval
-        self.logger.debug('init handshake unsuccessful after %d ms' % waiting_time)
+        self.logger.debug('init handshake unsuccessful after %d ms', waiting_time)
         return False
 
     @property
@@ -299,7 +298,7 @@ class ChatBot(multiprocessing.Process):
         self.zmq_init()
         self.logger.debug('Connect zmq logger')
         connect_logger(self.logger, self.context)
-        self.logger.debug('Chatbot properties:\n%s' % str(self))
+        self.logger.debug('Chatbot properties:\n%s', str(self))
         self.chatbot_loop()
 
     def chatbot_loop(self):
@@ -314,7 +313,7 @@ class ChatBot(multiprocessing.Process):
 
 
 if __name__ == '__main__':
-    """Chatbot demo without zmq and multiprocessing."""
+    print("""Chatbot demo without zmq and multiprocessing.""")
     bot = ChatBot(name=str(123), input_port=-6, output_port=-66)
 
     def get_msg():

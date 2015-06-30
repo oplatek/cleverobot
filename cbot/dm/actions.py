@@ -122,7 +122,7 @@ class Inform(BaseAction):
         asked_actions = [a for a in state.system_actions.values() if isinstance(a, WhatAsk)]
         for a in asked_actions:
             why_features = []
-            for r, w in svo.iteritems():
+            for w in svo.itervalues():
                 if w in a.args:
                     why_features.extend(
                         [('I', 'choose_action', str(a)), (str(a), 'has_argument', w), ('you', 'said', w)])
@@ -146,7 +146,7 @@ class Inform(BaseAction):
     @classmethod
     def reaction_factory(cls, state, n=10, probability_threshold=0.0):
         informs = []
-        for i, triplet in enumerate(state.user_mentions):
+        for triplet in state.user_mentions:
             # FIXME TODO use knowledge base end extract missing operands for triplets
             # for example (sacramento, is_capital, ?) -> (sacramento, is_capital, California)
             if not all((c is None for c in triplet)):
@@ -169,7 +169,6 @@ class WhatAsk(BaseAction):
         questions = []
         cuu = state.current_user_utterance
         svo = dict(zip(('subj', 'verb', 'obj'), (cuu.tokens[i] if i is not None else None for i in cuu.svo)))
-        question_triplet = svo.items()
         subj = svo['subj']
         # TODO improve: check for how, where, who, ...
         if subj is not None and 'what' in subj.lower():
@@ -180,11 +179,11 @@ class WhatAsk(BaseAction):
         return questions
 
     @classmethod
-    def reaction_factory(cls, state, n=10, probability_threshold=0.0, mentions_sample=10):
+    def reaction_factory(cls, state, n=10, probability_threshold=0.0):
         questions = []
         incomplete_mentions = [(m, prob) for m, prob in state.user_mentions.iteritems() if None in m]
         # TODO determine if how, where, what, who is the best
-        for m in incomplete_mentions:
+        for m, prob in incomplete_mentions:
             args = dict(zip(('entity', 'relation', 'value'), m))
             questions.append(WhatAsk("system", args=args, value=prob, why_features=["User mentions incomplete%s" % str(m)]))
         if len(state.user_mentions) > 0:
@@ -192,7 +191,7 @@ class WhatAsk(BaseAction):
             norm = sum(probabilities)
             probabilities = [ p / norm for p in probabilities]
             action_distribution = stats.rv_discrete(name='custm', values=(range(len(qs)), probabilities))
-            sample_size = min(mentions_sample, qs)
+            sample_size = min(n, qs)
             selected_mentions = [qs[i] for i in action_distribution.rvs(size=sample_size)]
             for m in selected_mentions:
                 args = dict(zip(('entity', 'relation', 'value'), m))
