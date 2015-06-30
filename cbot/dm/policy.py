@@ -4,7 +4,7 @@ from __future__ import unicode_literals, division
 import logging
 from scipy import stats
 import numpy as np
-from cbot.dm.actions import BaseAction
+from cbot.dm.actions import BaseAction, NoOp
 
 
 def sample(items, probabilities, n=1):
@@ -36,6 +36,11 @@ class RuleBasedPolicy(object):
         actions = []
         for action_type in BaseAction.__subclasses__():
             actions.extend(action_type.reaction_factory(self.state))
+        # filtering out no_noop
+        actions = [a for a in actions if not isinstance(a, NoOp)]
+        if len(actions) == 0:
+            actions = NoOp.reaction_factory(self.state)
+
 
         probabilities = [a.value for a in actions]
         norm = sum(probabilities)
