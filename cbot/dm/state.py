@@ -181,8 +181,11 @@ class SimpleTurnState(object):
         actions = []
         for action_type in BaseAction.__subclasses__():
             actions.extend(action_type.user_action_detection_factory(self))
+        if len(actions) == 0:
+            actions.append(NoOp("human", args={'unknown': self.current_user_utterance}, why_features=['I do not understand %s' % self.current_user_utterance]))
 
         # heuristics
+        assert len(actions) > 0
         dat_types_likelihood = defaultdict(float)
         for act in actions:
             dat_types_likelihood[type(act)] += act.value

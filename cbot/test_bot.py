@@ -44,7 +44,7 @@ class ChatBotConnectorTest(unittest.TestCase):
         self.logger_process.start()
         self.msg = None
 
-        def receive(m):
+        def receive(m, name):
             self.msg = m
 
         self.callback = receive
@@ -58,14 +58,21 @@ class ChatBotConnectorTest(unittest.TestCase):
         self.bot_device.join(0.1)
         self.logger_process.terminate()
 
-    def test_chatbot_loop(self):
+    def test_chatbot_loop(self, interval=0.01, attempts=10):
         log = logging.getLogger(str(self.__class__) + '.test_chatbot_loop')
         c = ChatBotConnector(self.callback, self.bot_front, self.bot_back, self.user_front, self.user_back)
         c.start()
         log.debug('sending msg')
         c.send(wrap_msg('test'))
+        response_time = 0
+        for i in range(attempts):
+            if self.msg is not None:
+                break
+            gevent.sleep(interval)
+            response_time += interval
+        log.info('Waiting for response %f s.' % response_time)
         self.assertIsNotNone(self.msg)
-        c.kill(1.0)
+        c.kill()
 
 
 class ChatBotOneAnswerTest(unittest.TestCase):

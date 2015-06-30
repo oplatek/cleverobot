@@ -257,7 +257,7 @@ class ChatBot(multiprocessing.Process):
                 'user': self.__class__.__name__,
                 'session': self.name,
             }
-            self.logger.info('%s,', jsonapi.dumps(msg))
+            self.logger.info('ChatBot %s,', jsonapi.dumps(msg))
             self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
 
     def zmq_init(self):

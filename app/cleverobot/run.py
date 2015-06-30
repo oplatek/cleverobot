@@ -84,7 +84,7 @@ def begin_dialog(msg):
                                                         args.user_output,
                                                         ctx=ctx)
         cbc.start()
-        fsocketio.join_room(cbc.id)
+        fsocketio.join_room(cbc.name)
         app.logger.debug('ChatbotConnector initiated')
     except botex.BotNotAvailableException as exp:
         err_msg = {'status': 'error', 'message': 'Chatbot not available'}
@@ -119,8 +119,8 @@ def process_utt(msg):
 def end_recognition(msg):
     try:
         cbc = fsocketio.session['chatbot']
-        fsocketio.leave_room(cbc.id)
-        fsocketio.close_room(cbc.id)
+        fsocketio.leave_room(cbc.name)
+        fsocketio.close_room(cbc.name)
         cbc.terminate()  # TODO
     except botex.BotEndException as exp:
         app.logger.error('Error on end: %s\n%s', exp, msg)
