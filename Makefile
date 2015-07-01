@@ -3,6 +3,7 @@ PORT=3000
 DEBUG='--no-debug'  # [--no-debug|--debug]
 # DATA_VOLUMES=${CURDIR} # TODO and copy out logs and recorded dialogues
 VOLUMES=-v ${CURDIR}:/opt/cleverobot
+MODEL_PREFIX_URL=http://vystadial.ms.mff.cuni.cz/download/cleverobot
 
 
 all: build
@@ -35,9 +36,9 @@ UNIT_TEST=export NLTK_DATA=`pwd`/nltk_data; nosetests -e test_factory app; noset
 INTEGRATION_TEST=echo 'TODO integration tests'
 
 test: unit-test integration-test
-unit-test:
+unit-test: download_models
 	$(UNIT_TEST)
-integration-test:
+integration-test: download_models
 	$(INTEGRATION_TEST)
 docker-test: docker-unit-test docker-integration-test
 docker-integration-test:
@@ -52,6 +53,11 @@ get-production-logs:
 # FIXME not working
 # production-logs2ufal:
 # 	scp -C root@147.251.253.222:/var/cache/openafs/code/cleverobot/cbot/logs/*.log oplatek@shrek.ms.mff.cuni.cz:/net/projects/vystadial/data/chat/
+
+download_models: cbot/lu/tagger.pickle
+
+cbot/lu/tagger.pickle:
+	wget $(MODEL_PREFIX_URL)/$@ -O $@
 
 logs2ufal:
 	scp -C -p cbot/logs/*.log oplatek@shrek.ms.mff.cuni.cz:/net/projects/vystadial/data/chat/new
