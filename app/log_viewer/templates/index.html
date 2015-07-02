@@ -5,14 +5,14 @@
 {% block content %}
 Directories:
 <ul id="dirs">
-    {% for dir in dirs %}
-        <li><a href="{{ dir[0] }}">{{ dir[1] }}</a></li>
+    {% for dir_link, dir_name in dirs: %}
+        <li><a href="{{ dir_link }}">{{ dir_name }}</a></li>
     {% endfor %}
 </ul>
 Logs:
 <ul id="logs">
-    {% for log in logs %}
-    <li><a href="{{ log[0] }}">{{ log[1] }}</a></li>
+    {% for log_link, log_name in logs %}
+    <li><a href="{{ log_link }}">{{ log_name }}</a></li>
     {% endfor %}
 </ul>
 

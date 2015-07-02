@@ -1,7 +1,17 @@
-{% extends "layout.html" %}
-{% block extra_css %}
-<link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='chat.css') }}">
-{% endblock %}
-{% block content %}
-{{ content }}
-{% endblock %}
+<!-- TODO remove -->
+<script src="http://code.jquery.com/jquery-latest.js"></script>
+
+
+<div id="data">
+    <ul id="messages">
+    </ul>
+
+    {% for user_input, original_system, current_system in data: %}
+    <script>
+        var $messages = $('#messages');
+        $messages.prepend($('<li class="user">').text({{ user_input|tojson|safe }}))
+        $messages.prepend($('<li class="original_system">').text({{ original_system|tojson|safe }}))
+        $messages.prepend($('<li class="current_system">').text({{ current_system|tojson|safe }}))
+    </script>
+    {% endfor %}
+</div>

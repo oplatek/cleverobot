@@ -2,10 +2,11 @@ import argparse
 from multiprocessing import Process
 import logging
 import os
+import time
 from cbot.bot import log_loop, connect_logger, forwarder_device_start
 import zmq.green as zmqg
 import zmq
-from flask import Flask, render_template, current_app, request, jsonify, url_for
+from flask import Flask, render_template, current_app, request, jsonify, url_for, Response, stream_with_context
 import functools
 
 app = Flask(__name__)
@@ -67,16 +68,33 @@ def index():
     # return "Log viewer"
 
 
-def replay_log(abs_path):
-    todo = 'todo content'
-    with open(abs_path, 'r') as r:
-        todo = r.read()
-    return render_template('log.html', content=todo)
+def _stream_template(template_name, **context):
+    # http://flask.pocoo.org/docs/patterns/streaming/#streaming-from-templates
+    app.update_template_context(context)
+    t = app.jinja_env.get_template(template_name)
+    rv = t.stream(context)
+    # uncomment if you don't need immediate reaction
+    ##rv.enable_buffering(5)
+    return rv
+
+
+def _replay_log(abs_path):
+    # TODO
+    def g(abs_path):
+        with open(abs_path, 'r') as r:
+            for line in r:
+                time.sleep(0.1)
+                app.logger.debug("sending threetimes: %s" % line)
+                # TODO escape
+                yield line, line, line
+
+    return Response(stream_with_context(_stream_template('log.html', data=g(abs_path))))
+
 
 @app.route('/log')
 @with_path
 def replay_log_path():
-    return replay_log(request.normalized_path)
+    return _replay_log(request.normalized_path)
 
 
 # @app.route('/log/<log_id>')
