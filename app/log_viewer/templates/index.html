@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+{% block extra_css %}
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='chat.css') }}">
+{% endblock %}
+{% block content %}
+Directories:
+<ul id="dirs">
+    {% for dir in dirs %}
+        <li><a href="{{ dir[0] }}">{{ dir[1] }}</a></li>
+    {% endfor %}
+</ul>
+Logs:
+<ul id="logs">
+    {% for log in logs %}
+    <li><a href="{{ log[0] }}">{{ log[1] }}</a></li>
+    {% endfor %}
+</ul>
+
+{% endblock %}

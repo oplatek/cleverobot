@@ -2,6 +2,7 @@
 # encoding: utf-8
 from __future__ import unicode_literals, division
 import logging
+import operator
 from scipy import stats
 import numpy as np
 from cbot.dm.actions import BaseAction, NoOp
@@ -20,7 +21,6 @@ class RuleBasedPolicy(object):
     def __init__(self, kb, state):
         self.kb = kb
         self.state = state
-        # self.logger = logging.getLogger(self.__module__)  # TODO self class/module
         self.logger = logging.getLogger(str(self.__class__))  # TODO self class/module
 
     def act(self):
@@ -39,8 +39,8 @@ class RuleBasedPolicy(object):
         # filtering out no_noop
         actions = [a for a in actions if not isinstance(a, NoOp)]
         if len(actions) == 0:
+            self.logger.debug("No actions except NoOp suggested")
             actions = NoOp.reaction_factory(self.state)
-
 
         probabilities = [a.value for a in actions]
         norm = sum(probabilities)
@@ -49,14 +49,20 @@ class RuleBasedPolicy(object):
         index = action_index_distribution.rvs(size=1)[0]
         sample_a = actions[index]
 
+        best_index = max(probabilities, key=operator.itemgetter(1))[0]  # argmax
+        if best_index == index:
+            self.logger.info("Policy %s chose the best action %s", str(self.__class__), str(sample_a))
+        else:
+            self.logger.info("Policy %s chose suboptimal action %s", str(self.__class__), str(sample_a))
+
         self.state.update_system_action(sample_a)
         return sample_a.act()
 
     def update_state(self, utt):
         """Perform NLU preprocessing before updating the state"""
-
         # TODO ?implement interface? - so far this order is fixed
         self.state.current_user_utterance = utt
         self.state.update_mentions()
         actions = self.state.update_dat()
         self.state.update_user_action(actions)
+        self.debug("state updated")

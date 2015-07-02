@@ -10,6 +10,16 @@ bot_properties = {
     ('cleverobot', 'known_as', 'I'),
 }
 
+# hasOptionally, hasCompulsory cannot be forced without controlling mechanism
+# which we do not want to implement. Some of the relations in the ontology
+# have only autodocumentation functionality
+#
+# Ontology variable should only to remind us that usually there are some handcrafted ontologies in the knowledge bases
+ontology = {
+    ('thing', 'hasProperty', 'hasProperty'),
+    ('state', 'hasProperty', 'isCapitalOf'),
+}
+
 is_capital = {
     ('Montgomery', 'isCapitalOf', 'Alabama'),
     ('Juneau', 'isCapitalOf', 'Alaska'),
@@ -152,16 +162,6 @@ is_country = {
     ('Wisconsin', 'isA', 'state'),
     ('Wyoming', 'isA', 'state'),
     ('United States Virgin Islands', 'isA', 'state'),
-}
-
-# hasOptionally, hasCompulsory cannot be forced without controlling mechanism
-# which we do not want to implement. Some of the relations in the ontology
-# have only autodocumentation functionality
-#
-# Ontology variable should only to remind us that usually there are some handcrafted ontologies in the knowledge bases
-ontology = {
-    ('thing', 'hasProperty', 'hasProperty'),
-    ('state', 'hasProperty', 'isCapitalOf'),
 }
 
 plays_rock = {

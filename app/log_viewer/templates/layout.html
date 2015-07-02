@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+    {% block head %}
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='bootstrap.css') }}">
+    {% block extra_css %}{% endblock %}
+    <script async src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+    <title>{% block title %}Clever robot log viewer{% endblock %}</title>
+    {% endblock %}
+</head>
+<body>
+<div class="container">
+{% block body %}
+<div class="page-header">
+    <div class="row">
+        <div class="span9">
+            <h1>Cleve-r-obot log viewer<small>dynamicly generated</small></h1>
+        </div>
+    </div>
+</div>
+<div class="content">
+{% block content %}
+{% endblock %}
+</div>
+{% endblock %}
+</div>
+</body>
+</html>

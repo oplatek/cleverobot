@@ -31,7 +31,7 @@ def topic_msg_to_json(topic_msg):
     return topic, msg
 
 
-def create_local_logging_handler(name):
+def create_local_logging_handler(name, log_level=logging.WARNING, suffix="input_output"):
     dir_name = os.path.dirname(os.path.abspath(__file__))
     logger = logging.getLogger(__name__)
     log_dir = os.path.join(dir_name, 'logs')
@@ -41,9 +41,10 @@ def create_local_logging_handler(name):
         if e.errno != errno.EEXIST:
             raise
     logger.setLevel(logging.DEBUG)
-    h = logging.FileHandler(os.path.join(log_dir, name + '.log'), mode='w', delay=True)
-    h.setLevel(logging.INFO)
+    h = logging.FileHandler(os.path.join(log_dir, '%s_%s.log' % (name, suffix), mode='w', delay=True))
+    h.setLevel(log_level)
     return h
+
 
 
 def log_from_subscriber(sub):
@@ -226,7 +227,7 @@ class ChatBot(multiprocessing.Process):
         # Normal conversation
         if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
             _, msg = topic_msg_to_json(self.isocket.recv())
-            self.logger.info('%s,', jsonapi.dumps(msg))
+            self.logger.warning('%s,', jsonapi.dumps(msg))
             # hack - control signal from user
             if msg['utterance'].lower() == 'your id' or msg['utterance'].lower() == 'your id, please!':
                 self.send_msg(self.name)
@@ -256,7 +257,7 @@ class ChatBot(multiprocessing.Process):
                 'user': self.__class__.__name__,
                 'session': self.name,
             }
-            self.logger.info('ChatBot %s,', jsonapi.dumps(msg))
+            self.logger.warning('%s,', jsonapi.dumps(msg))
             self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
 
     def zmq_init(self):
@@ -283,7 +284,9 @@ class ChatBot(multiprocessing.Process):
 
     def single_process_init(self):
         self.logger = logging.getLogger(self.__class__.__name__ + str(self.name))
-        self.logger.addHandler(create_local_logging_handler('%s_%s' % (time.time(), self.name)))
+        name = '%s_%s' % (time.time(), self.name)
+        self.logger.addHandler(create_local_logging_handler(name, suffix='input_output', log_level=logging.INFO))
+        self.logger.addHandler(create_local_logging_handler(name, suffix='dm_logic', log_level=logging.WARNING))
 
         self.kb = kb.KnowledgeBase()
         self.kb.load_default_models()
@@ -302,7 +305,7 @@ class ChatBot(multiprocessing.Process):
         self.chatbot_loop()
 
     def chatbot_loop(self):
-        self.logger.info('Entering ChatBot loop: waiting for user input')
+        self.logger.debug('Entering ChatBot loop: waiting for user input')
         while self.should_run():
             msg = self.receive_msg()
             if msg is None:

@@ -2,19 +2,16 @@
 # encoding: utf-8
 from __future__ import unicode_literals
 import logging
-import os
 import time
 from flask import Flask, render_template, current_app, request, jsonify
 import flask.ext.socketio as fsocketio
 import argparse
-from zmq.utils import jsonapi
 from cbot.bot import ChatBotConnector, log_loop, connect_logger, topic_msg_to_json, LOGGING_ADDRESS
 from cbot.bot import forwarder_device_start
 import cbot.bot_exceptions as botex
 from multiprocessing import Process
 import zmq.green as zmqg
 import zmq
-import app.cleverobot as capp
 
 
 app = Flask(__name__)
@@ -130,7 +127,6 @@ def end_recognition(msg):
 
 def web_response(msg, room_id):
     socketio.emit('socketbot', msg, room=room_id)
-    print('sent: %s to %s', msg, room_id)
     app.logger.debug('sent: %s to %s', msg, room_id)
 
 
