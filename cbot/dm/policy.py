@@ -49,7 +49,7 @@ class RuleBasedPolicy(object):
         index = action_index_distribution.rvs(size=1)[0]
         sample_a = actions[index]
 
-        best_index = max(probabilities, key=operator.itemgetter(1))[0]  # argmax
+        best_index = max(enumerate(probabilities), key=operator.itemgetter(1))[0]  # argmax
         if best_index == index:
             self.logger.info("Policy %s chose the best action %s", str(self.__class__), str(sample_a))
         else:
@@ -65,4 +65,4 @@ class RuleBasedPolicy(object):
         self.state.update_mentions()
         actions = self.state.update_dat()
         self.state.update_user_action(actions)
-        self.debug("state updated")
+        self.logger.debug("state updated")

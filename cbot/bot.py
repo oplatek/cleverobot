@@ -41,7 +41,7 @@ def create_local_logging_handler(name, log_level=logging.WARNING, suffix="input_
         if e.errno != errno.EEXIST:
             raise
     logger.setLevel(logging.DEBUG)
-    h = logging.FileHandler(os.path.join(log_dir, '%s_%s.log' % (name, suffix), mode='w', delay=True))
+    h = logging.FileHandler(os.path.join(log_dir, '%s_%s.log' % (name, suffix)), mode='w', delay=True)
     h.setLevel(log_level)
     return h
 
@@ -227,7 +227,7 @@ class ChatBot(multiprocessing.Process):
         # Normal conversation
         if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
             _, msg = topic_msg_to_json(self.isocket.recv())
-            self.logger.warning('%s,', jsonapi.dumps(msg))
+            self.logger.warning('%s', jsonapi.dumps(msg))
             # hack - control signal from user
             if msg['utterance'].lower() == 'your id' or msg['utterance'].lower() == 'your id, please!':
                 self.send_msg(self.name)
@@ -257,7 +257,7 @@ class ChatBot(multiprocessing.Process):
                 'user': self.__class__.__name__,
                 'session': self.name,
             }
-            self.logger.warning('%s,', jsonapi.dumps(msg))
+            self.logger.warning('%s', jsonapi.dumps(msg))
             self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
 
     def zmq_init(self):

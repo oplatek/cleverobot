@@ -97,11 +97,6 @@ def replay_log_path():
     return _replay_log(request.normalized_path)
 
 
-# @app.route('/log/<log_id>')
-# def replay_log_rest(log_id):
-#     norm_path = normalize_path(log_id)
-#     return replay_log(norm_path)
-
 @app.errorhandler(404)
 def page_not_found(e):
     app.logger.error('Page not found 404: %s' % e)

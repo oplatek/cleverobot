@@ -86,7 +86,7 @@ class BaseAction(object):
         if self.surface_form is not None:
             return str(self.surface_form)
         else:
-            return self.get_description()
+            return self.description()
 
 
 class NoOp(BaseAction):
@@ -199,7 +199,7 @@ class WhatAsk(BaseAction):
         return questions
 
     def description(self):
-        return "Ask open what question about %s", self.args
+        return "Ask open what question about %s" % self.args
 
     def act(self):
         # TODO nlg
