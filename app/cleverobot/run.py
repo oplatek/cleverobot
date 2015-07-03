@@ -17,7 +17,11 @@ import zmq
 app = Flask(__name__)
 app.secret_key = 12345  # TODO
 socketio = fsocketio.SocketIO(app)
-
+log_name = 'cleverobot.log'
+bot_input, bot_output = 6666, 7777
+user_input, user_output = 8888, 9999
+host, port = '0.0.0.0', 3000
+ctx = zmqg.Context()
 
 @app.before_request
 def log_request():
@@ -43,7 +47,7 @@ def request_stats(chatbot_id):
     current_app.logger.debug('sent stats req to %s' % chatbot_id)
     async_stat_sub = context.socket(zmq.SUB)
     async_stat_sub.setsockopt_string(zmq.SUBSCRIBE, 'stat_%s' % chatbot_id)
-    async_stat_sub.connect('tcp://127.0.0.1:%d' % args.user_output)
+    async_stat_sub.connect('tcp://127.0.0.1:%d' % user_output)
     poller = zmqg.Poller()
     poller.register(async_stat_sub, zmqg.POLLIN)
     time.sleep(0.1)
@@ -75,10 +79,10 @@ def internal_server_err(e):
 def begin_dialog(msg):
     try:
         cbc = fsocketio.session['chatbot'] = ChatBotConnector(web_response,
-                                                        args.bot_input,
-                                                        args.bot_output,
-                                                        args.user_input,
-                                                        args.user_output,
+                                                        bot_input,
+                                                        bot_output,
+                                                        user_input,
+                                                        user_output,
                                                         ctx=ctx)
         cbc.start()
         fsocketio.join_room(cbc.name)
@@ -130,51 +134,61 @@ def web_response(msg, room_id):
     app.logger.debug('sent: %s to %s', msg, room_id)
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='cleverobot app')
-    parser.add_argument('-p', '--port', type=int, default=3000)
-    parser.add_argument('-t', '--host', default='0.0.0.0')
-    parser.add_argument('-d', '--debug', dest='debug', action='store_true')
-    parser.add_argument('--no-debug', dest='debug', action='store_false')
-    parser.set_defaults(debug=True)
-    parser.add_argument('-l', '--log', default='cleverobot.log')
-    parser.add_argument('--bot-input', type=int, default=6666)
-    parser.add_argument('--bot-output', type=int, default=7777)
-    parser.add_argument('--user-input', type=int, default=8888)
-    parser.add_argument('--user-output', type=int, default=9999)
-    args = parser.parse_args()
+def shut_down(forwarder_process_bot, forwarder_process_user, log_process):
+    if forwarder_process_bot is not None:
+        forwarder_process_bot.join(timeout=0.1)
+    if forwarder_process_user is not None:
+        forwarder_process_user.join(timeout=0.1)
+    if log_process is not None:
+        log_process.join(timeout=0.1)
 
-    log_process = Process(target=log_loop, kwargs={'log_name': args.log})
-    forwarder_process_bot, forwarder_process_user = None, None
+
+def start_zmq_and_log_processes(context, bot_in, bot_out, user_in, user_out):
+    log_process, forwarder_process_bot, forwarder_process_user = None, None, None
     try:
+        log_process = Process(target=log_loop, kwargs={'log_name': log_name})
         log_process.start()
-        ctx = zmqg.Context()
+
         connect_logger(app.logger, ctx)
         werkzeug_logger = logging.getLogger('werkzeug')
         connect_logger(werkzeug_logger, ctx)
 
-        forwarder_process_bot = forwarder_device_start(args.bot_input, args.bot_output, app.logger)
-        forwarder_process_user = forwarder_device_start(args.user_input,
-                                                        args.user_output,
-                                                        app.logger)
+        forwarder_process_bot = forwarder_device_start(bot_input, bot_output, app.logger)
+        forwarder_process_user = forwarder_device_start(user_input, user_output, app.logger)
 
         pub2bot = ctx.socket(zmq.PUB)
-        pub2bot.connect('tcp://127.0.0.1:%d' % args.bot_input)
+        pub2bot.connect('tcp://127.0.0.1:%d' % bot_input)
+    except Exception as e:
+        app.logger.error("Exception during setup processes %s" % str(e), exc_info=True)
+        raise e
+    return log_process, forwarder_process_bot, forwarder_process_user
 
-        app.logger.info('args: %s', args)
-        socketio.run(app, host=args.host, port=args.port, use_reloader=False,)
 
-        # use nginx instead
-        # key_dir_path = os.path.realpath(os.path.join(os.path.dirname(capp.__path__[0]), 'keys'))
-        # key_path = os.path.join(key_dir_path, 'exploited.key')
-        # cert_path = os.path.join(key_dir_path, 'exploited.crt')
-        # socketio.run(app, host=args.host, port=args.port, use_reloader=False, keyfile=key_path, certfile=cert_path)
-    except Exception, e:
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='cleverobot app')
+    parser.add_argument('-p', '--port', type=int, default=port)
+    parser.add_argument('-t', '--host', default=host)
+    parser.add_argument('-d', '--debug', dest='debug', action='store_true')
+    parser.add_argument('--no-debug', dest='debug', action='store_false')
+    parser.set_defaults(debug=True)
+    parser.add_argument('-l', '--log', default=log_name)
+    parser.add_argument('--bot-input', type=int, default=bot_input)
+    parser.add_argument('--bot-output', type=int, default=bot_output)
+    parser.add_argument('--user-input', type=int, default=user_input)
+    parser.add_argument('--user-output', type=int, default=user_output)
+    args = parser.parse_args()
+
+    bot_input, bot_output = args.bot_input, args.bot_output
+    user_input, user_output = args.user_input, args.user_output
+    host, port, log_name = args.host, args.port, args.log
+
+    log_process, forwarder_process_bot, forwarder_process_user = start_zmq_and_log_processes(ctx, bot_input, bot_output, user_input, user_output)
+    try:
+        socketio.run(app, host=host, port=port, use_reloader=False,)
+    except Exception as e:
+        app.logger.exception(e)
         app.logger.error("Top level exception", exc_info=True)
-        raise
+        if app.debug:
+            raise e
     finally:
-        if forwarder_process_bot is not None:
-            forwarder_process_bot.join(timeout=0.1)
-        if forwarder_process_user is not None:
-            forwarder_process_user.join(timeout=0.1)
-        log_process.terminate()
+        shut_down(forwarder_process_bot, forwarder_process_user, log_process)

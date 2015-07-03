@@ -8,15 +8,12 @@ import time
 import random
 import uuid
 import gevent
-from cbot.bot import ChatBot, ChatBotConnector, forwarder_device_start, log_loop, connect_logger, topic_msg_to_json
+from cbot.bot import ChatBot, ChatBotConnector, forwarder_device_start, log_loop, connect_logger, topic_msg_to_json, \
+    wrap_msg
 import datetime
 import sys
 import zmq
 from zmq.utils import jsonapi
-
-
-def wrap_msg(utt):
-    return {'time': time.time(), 'user': 'human', 'utterance': utt}
 
 
 class LoggerTest(unittest.TestCase):

@@ -24,6 +24,10 @@ import cbot.kb as kb
 LOGGING_ADDRESS = 'tcp://127.0.0.1:6699'
 
 
+def wrap_msg(utt):
+    return {'time': time.time(), 'user': 'human', 'utterance': utt}
+
+
 def topic_msg_to_json(topic_msg):
     json0 = topic_msg.find('{')
     topic = topic_msg[0:json0].strip()

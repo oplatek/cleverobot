@@ -1,21 +1,28 @@
 import argparse
-from multiprocessing import Process
 import logging
 import os
-import time
-from cbot.bot import log_loop, connect_logger, forwarder_device_start
+from zmq.utils import jsonapi
+from app.cleverobot.run import start_zmq_and_log_processes, shut_down
 import zmq.green as zmqg
-import zmq
 from flask import Flask, render_template, current_app, request, jsonify, url_for, Response, stream_with_context
 import functools
+from cbot.bot import ChatBotConnector, wrap_msg
+from gevent.queue import Queue, Empty
+from gevent import Timeout
 
 app = Flask(__name__)
 app.secret_key = 12345  # TODO
+root = os.path.realpath(os.path.join(os.path.dirname(__file__), '../../cbot/logs'))
+log_name = 'logs.cleverobot.log'
+bot_input, bot_output = 6665, 7776
+user_input, user_output = 8887, 9998
+host, port = '0.0.0.0', 4000
+ctx = zmqg.Context()
 
 
 def normalize_path(path):
-    abs_path = os.path.realpath(os.path.join(app.root, path))
-    if os.path.commonprefix([abs_path, app.root]) != app.root:
+    abs_path = os.path.realpath(os.path.join(root, path))
+    if os.path.commonprefix([abs_path, root]) != root:
         raise KeyError("Invalid argument: do not try to access files above the root.")
     return abs_path
 
@@ -26,7 +33,7 @@ def with_path(f):
         werkzeug_logger = logging.getLogger('werkzeug')
         try:
             if 'path' not in request.args:
-                rp = app.root
+                rp = root
             else:
                 rp = request.args.get('path')
             werkzeug_logger.info("Requested path %s\n" % rp)
@@ -58,7 +65,7 @@ def index():
     content = os.listdir(abs_path)
     name_paths = [(n, os.path.join(abs_path, n)) for n in content]
     name_paths = [(n, p, True) if os.path.isdir(p) else (n, p, False) for n, p in name_paths]
-    name_paths = [(n, os.path.relpath(p, app.root), d) for n, p, d in name_paths]
+    name_paths = [(n, os.path.relpath(p, root), d) for n, p, d in name_paths]
     # FIXME use url_for
     dirs = [('/?path=%s' % p, n) for n, p, d in name_paths if d]
     logs = [('/log?path=%s' % p, n) for n, p, d in name_paths if not d and p.endswith('log')]
@@ -78,17 +85,58 @@ def _stream_template(template_name, **context):
     return rv
 
 
-def _replay_log(abs_path):
-    # TODO
-    def g(abs_path):
-        with open(abs_path, 'r') as r:
-            for line in r:
-                time.sleep(0.1)
-                app.logger.debug("sending threetimes: %s" % line)
-                # TODO escape
-                yield line, line, line
+def _read_conversation(abs_path):
+    with open(abs_path, 'r') as r:
+        msgs = []
+        for line in r:
+            try:
+                user_input, original_system, current_system = None, None, None
+                msg = jsonapi.loads(line)
+                assert 'user' in msg
+                assert 'utterance' in msg
+                if msg['user'] == 'human':
+                    msgs.append((True, msg['utterance']))
+                else:
+                    msgs.append((False, msg['utterance']))
+            except ValueError as e:
+                app.logger.warning('Skipping utterance %s cannot parse as json (Exception: %s)' % (line, e))
+    return msgs
 
-    return Response(stream_with_context(_stream_template('log.html', data=g(abs_path))))
+
+
+def _replay_log(abs_path, timeout=0.5):
+
+    awnswers = Queue()
+
+    def store_to_queue(msg, chatbot_id):
+        app.logger.debug('Received awnswer %s from %s' % (msg, chatbot_id))
+        awnswers.put(msg)
+
+    cbc = ChatBotConnector(store_to_queue, bot_input, bot_output, user_input, user_output, ctx=ctx)
+    msgs = _read_conversation(abs_path)
+
+    def g(ms):
+        original_response, user_said, current_system = None, None, None
+        for is_user, utt in ms:
+            if is_user:
+                cbc.send(wrap_msg(utt))
+            else:
+                original_response = utt
+
+            try:
+                current_system = awnswers.get(timeout=timeout)
+            except Empty:
+                current_system = None
+
+            if current_system is not None or original_response is not None:
+                yield user_said, original_response, current_system
+                original_response, user_said, current_system = None, None, None
+
+            while not awnswers.empty():
+                _cur_sys = awnswers.get()
+                yield None, None, _cur_sys
+
+    return Response(stream_with_context(_stream_template('log.html', data=g(msgs))))
 
 
 @app.route('/log')
@@ -108,50 +156,37 @@ def internal_server_err(e):
     app.logger.error('Internal server error 500: %s', e)
     return render_template("error.html", error='500', msg=e), 500
 
+
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='cleverobot log viewer')
-    parser.add_argument('-p', '--port', type=int, default=8080)
-    parser.add_argument('-t', '--host', default='0.0.0.0')
+    parser = argparse.ArgumentParser(description='cleverobot app')
+    parser.add_argument('-p', '--port', type=int, default=port)
+    parser.add_argument('-t', '--host', default=host)
     parser.add_argument('-d', '--debug', dest='debug', action='store_true')
     parser.add_argument('--no-debug', dest='debug', action='store_false')
     parser.set_defaults(debug=True)
-    parser.add_argument('-l', '--log', default='logs.cleverobot.log')
-    parser.add_argument('--bot-input', type=int, default=6665)
-    parser.add_argument('--bot-output', type=int, default=7776)
-    parser.add_argument('--log-input', type=int, default=8887)
-    parser.add_argument('--log-output', type=int, default=9998)
-    parser.add_argument('-root', type=str, default='../../cbot/logs', help='root directory of logs.')
+    parser.add_argument('-l', '--log', default=log_name)
+    parser.add_argument('-r', '--root', default=root)
+    parser.add_argument('--bot-input', type=int, default=bot_input)
+    parser.add_argument('--bot-output', type=int, default=bot_output)
+    parser.add_argument('--user-input', type=int, default=user_input)
+    parser.add_argument('--user-output', type=int, default=user_output)
     args = parser.parse_args()
 
-    app.root = os.path.realpath(args.root)
-    if not os.path.isdir(app.root):
-        raise KeyError("argument root is not a directory: %s" % app.root)
-    log_process = Process(target=log_loop, kwargs={'log_name': args.log})
-    forwarder_process_bot, forwarder_process_log = None, None
+    bot_input, bot_output = args.bot_input, args.bot_output
+    user_input, user_output = args.user_input, args.user_output
+    host, port, log_name = args.host, args.port, args.log
+
+    root = os.path.realpath(args.root)
+    if not os.path.isdir(root):
+        raise KeyError("argument root is not a directory: %s" % root)
+
+    log_process, forwarder_process_bot, forwarder_process_user = start_zmq_and_log_processes(ctx, bot_input, bot_output, user_input, user_output)
     try:
-        # log_process.start()
-        # ctx = zmqg.Context()
-        # connect_logger(app.logger, ctx)
-        werkzeug_logger = logging.getLogger('werkzeug')
-        # connect_logger(werkzeug_logger, ctx)
-        #
-        # forwarder_process_bot = forwarder_device_start(args.bot_input, args.bot_output, app.logger)
-        # forwarder_process_log = forwarder_device_start(args.log_input,
-        #                                                 args.log_output,
-        #                                                 app.logger)
-        #
-        # pub2bot = ctx.socket(zmq.PUB)
-        # pub2bot.connect('tcp://127.0.0.1:%d' % args.bot_input)
-
-        app.logger.info('args: %s', args)
-        app.run(host=args.host, port=args.port, debug=args.debug)
-
-    except Exception, e:
+        app.run(host=host, port=port, debug=args.debug, use_reloader=False)
+    except Exception as e:
+        app.logger.exception(e)
         app.logger.error("Top level exception", exc_info=True)
-        raise
+        if app.debug:
+            raise e
     finally:
-        if forwarder_process_bot is not None:
-            forwarder_process_bot.join(timeout=0.1)
-        if forwarder_process_log is not None:
-            forwarder_process_log.join(timeout=0.1)
-        # log_process.terminate()
+        shut_down(forwarder_process_bot, forwarder_process_user, log_process)
