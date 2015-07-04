@@ -119,6 +119,7 @@ def _replay_log(abs_path, timeout=0.5):
         original_response, user_said, current_system = None, None, None
         for is_user, utt in ms:
             if is_user:
+                user_said = utt
                 cbc.send(wrap_msg(utt))
             else:
                 original_response = utt
