@@ -3,6 +3,7 @@ from collections import defaultdict
 import logging
 import os
 import gevent
+from gevent.event import Event
 from zmq.utils import jsonapi
 from app.cleverobot.run import start_zmq_and_log_processes, shut_down
 import zmq.green as zmqg
@@ -106,13 +107,13 @@ def _read_conversation(abs_path):
 
 
 def _store_to_queue(msg, chatbot_id):
-    print 'debug 222'
     app.logger.debug('Received answer %s from %s' % (msg, chatbot_id))
     answers[chatbot_id].put(msg)
 
 
 def _gen_data(cbc, ms, timeout=1.0):
     original_response, user_said, current_system = None, None, None
+    print 'debug0', ms
     for is_user, utt in ms:
         if is_user:
             user_said = utt
@@ -130,22 +131,21 @@ def _gen_data(cbc, ms, timeout=1.0):
             yield user_said, original_response, current_system
             original_response, user_said, current_system = None, None, None
 
-        while not answers.empty():
+        while not answers[cbc.name].empty():
             _cur_sys = answers.get()
             yield None, None, _cur_sys
+    cbc.kill()
 
 
 def _replay_log(abs_path):
-
     cbc = ChatBotConnector(_store_to_queue, bot_input, bot_output, user_input, user_output, ctx=ctx)
     cbc.start()
     if not cbc.initialized.get():
-        return render_template("error.html", msg="Chatbot not initialized")
-
-    msgs = _read_conversation(abs_path)
-
-    res = Response(stream_with_context(_stream_template('log.html', data=_gen_data(cbc,msgs))))
-    cbc.kill()
+        res = render_template("error.html", msg="Chatbot not initialized")
+    else:
+        msgs = _read_conversation(abs_path)
+        print 'Debug 1'
+        res = Response(stream_with_context(_stream_template('log.html', data=_gen_data(cbc, msgs))))
     return res
 
 

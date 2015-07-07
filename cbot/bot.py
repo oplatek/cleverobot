@@ -173,6 +173,7 @@ class ChatBotConnector(Greenlet):
         return self.bot.name
 
     def send(self, msg):
+        print self.initialized.get()  # May block if not initialized
         assert self.initialized.get()  # May block if not initialized
         assert 'utterance' in msg
         msg['user'] = 'human'
@@ -199,11 +200,11 @@ class ChatBotConnector(Greenlet):
             self.finalize()
 
     def finalize(self):
+        self.logger.debug("Finishing ChatBotConnector")
         self.initialized.set(False)
         self.should_run = lambda: False
         self.pub2bot.send_string('die_%s die' % self.name)
         self.bot.terminate()
-        self.logger.debug("ChatBotConnector finished")
 
     def kill(self, exception=GreenletExit, block=True, timeout=None):
         self.finalize()
