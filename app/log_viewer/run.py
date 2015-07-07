@@ -115,7 +115,9 @@ def _replay_log(abs_path, timeout=2.5):
 
     cbc = ChatBotConnector(store_to_queue, bot_input, bot_output, user_input, user_output, ctx=ctx)
     cbc.start()
-    cbc.initialized.wait(timeout)
+
+    if not cbc.initialized.get():
+        return render_template("error.html", msg="Chatbot not initialized")
 
     msgs = _read_conversation(abs_path)
 

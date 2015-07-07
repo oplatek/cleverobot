@@ -60,6 +60,7 @@ class ChatBotConnectorTest(unittest.TestCase):
         c = ChatBotConnector(self.callback, self.bot_front, self.bot_back, self.user_front, self.user_back)
         c.start()
         log.debug('sending msg')
+        self.assertIsNone(self.msg)
         c.send(wrap_msg('test'))
         response_time = 0
         for i in range(attempts):

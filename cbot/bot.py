@@ -21,8 +21,7 @@ from cbot.kb.kb_data import data
 from cbot.dm.state import SimpleTurnState, Utterance
 from cbot.dm.policy import RuleBasedPolicy
 import cbot.kb as kb
-from gevent.event import Event
-
+from gevent.event import AsyncResult
 
 LOGGING_ADDRESS = 'tcp://127.0.0.1:6699'
 
@@ -140,17 +139,18 @@ class ChatBotConnector(Greenlet):
 
         self.logger = logging.getLogger(self.__class__.__name__ + str(name))
         connect_logger(self.logger, self.context)
+        self.bot = ChatBot(name, bot_back_port, user_front_port)
+        self.bot.start()
+
         self.response = response_cb
         self.should_run = lambda: True  # change is based on the messages
-        self.initialized = Event()
+        self.initialized = AsyncResult()
 
-        self.bot = ChatBot(name, bot_back_port, user_front_port)
-        self.bot.start()  # TODO should I move it to _run()
         if self._init_handshake():
             self.logger.debug('Connector2bot synchronised with ChatBot.')
-            self.initialized.set()
+            self.initialized.set(True)
         else:
-            self.initialized.clear()
+            self.initialized.set(False)
             self.finalize()
 
     def _init_handshake(self, num_handshakes=10, interval=10):
@@ -173,7 +173,7 @@ class ChatBotConnector(Greenlet):
         return self.bot.name
 
     def send(self, msg):
-        assert self.initialized.is_set()
+        assert self.initialized.get()  # May block if not initialized
         assert 'utterance' in msg
         msg['user'] = 'human'
         msg['time'] = time.time()
@@ -185,7 +185,7 @@ class ChatBotConnector(Greenlet):
         self.logger.debug('%s started listening for ChatBot msgs ' % str(self.__class__.__name__) + self.name)
         try:
             while self.should_run():
-                assert self.initialized.is_set()
+                assert self.initialized.get()
                 self.logger.debug('ChatBotConnector before poll')
                 socks = dict(self.poller.poll())
                 self.logger.debug('ChatBotConnector after poll')
@@ -199,7 +199,7 @@ class ChatBotConnector(Greenlet):
             self.finalize()
 
     def finalize(self):
-        self.initialized.clear()
+        self.initialized.set(False)
         self.should_run = lambda: False
         self.pub2bot.send_string('die_%s die' % self.name)
         self.bot.terminate()
