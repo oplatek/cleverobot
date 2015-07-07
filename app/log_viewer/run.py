@@ -1,5 +1,6 @@
 import argparse
 from collections import defaultdict
+from itertools import izip_longest
 import logging
 import os
 import gevent
@@ -111,31 +112,31 @@ def _store_to_queue(msg, chatbot_id):
     answers[chatbot_id].put(msg)
 
 
-def _gen_data(cbc, ms, timeout=1.0):
-    original_response, user_said, current_system = None, None, None
+def _gen_data(cbc, ms, timeout=0.1):
+    user_said, original_response, current_system = [], [],[]
     for is_user, utt in ms:
         if is_user:
-            user_said = utt
+            user_said.append(utt)
             cbc.send(wrap_msg(utt))
             try:
-                gevent.sleep(0)
-                current_system_msg = answers[cbc.name].get(timeout=timeout)
-                assert 'utterance' in current_system_msg
-                assert current_system_msg['user'] == 'ChatBot'
-                current_system = current_system_msg['utterance']
+                current_system_msgs = [answers[cbc.name].get(timeout=timeout)]
+                while not answers[cbc.name].empty():
+                    current_system_msgs.append(answers[cbc.name].get())
+                for m in current_system_msgs:
+                    assert 'utterance' in m
+                    assert m['user'] == 'ChatBot'
+                    current_system.append(m['utterance'])
             except Empty:
                 app.logger.debug('System not responded to "%s"' % utt)
-                current_system = None
         else:
-            original_response = utt
-
-        if current_system is not None or original_response is not None:
-            yield user_said, original_response, current_system
-            original_response, user_said, current_system = None, None, None
-
-        while not answers[cbc.name].empty():
-            _cur_sys = answers.get()
-            yield None, None, _cur_sys
+            original_response.append(utt)
+        if len(user_said) > 0 and (len(original_response) > 0 or len(current_system) > 1):
+            print 'debug\n', user_said, original_response, current_system, '\n debug'
+            for u, o, c in izip_longest(user_said, original_response, current_system):
+                yield u, o, c
+            user_said, original_response, current_system = [], [],[]
+    for u, o, c in izip_longest(user_said, original_response, current_system):
+        yield u, o, c
     cbc.kill()
 
 
