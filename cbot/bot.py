@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 from __future__ import unicode_literals
+from greenlet import GreenletExit
 import multiprocessing
 import time
 import logging
@@ -203,6 +204,10 @@ class ChatBotConnector(Greenlet):
         self.pub2bot.send_string('die_%s die' % self.name)
         self.bot.terminate()
         self.logger.debug("ChatBotConnector finished")
+
+    def kill(self, exception=GreenletExit, block=True, timeout=None):
+        self.finalize()
+        super(ChatBotConnector, self).kill(exception=exception, block=block, timeout=timeout)
 
 
 class ChatBot(multiprocessing.Process):

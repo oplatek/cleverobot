@@ -142,6 +142,7 @@ def _replay_log(abs_path, timeout=2.5):
                 _cur_sys = answers.get()
                 yield None, None, _cur_sys
         print 'debug 102', cbc.initialized, str(cbc)
+        cbc.kill()
 
     print 'debug 101', cbc.initialized, str(cbc)
     return Response(stream_with_context(_stream_template('log.html', data=g(msgs))))

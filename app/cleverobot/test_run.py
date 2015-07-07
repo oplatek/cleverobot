@@ -23,17 +23,20 @@ class RoutingTestCase(unittest.TestCase):
 class TestSocketIO(unittest.TestCase):
 
     def setUp(self):
-        run.main()
         self.client = run.socketio.test_client(run.app)
 
     def tearDown(self):
         self.client.disconnect()
+        del self.client
 
     def test_connect(self):
         # self.client.send({'setup': 'unused'}, namespace='/begin')
         self.client.emit('begin', {'setup': 'unused'})
-        self.client.emit('utterance', {'time_sent': datetime.datetime.now(), 'user':'human', 'utterance': 'Hi'})
-        time.sleep(5)
+        time.sleep(1)
+        self.client.emit('utterance', {'time_sent': str(datetime.datetime.now()), 'user': 'human', 'utterance': 'Hi'})
+        time.sleep(1)
+        self.client.emit('end', {'time_sent': str(datetime.datetime.now()), 'user': 'human', 'utterance': 'Hi'})
+        time.sleep(1)
         received = self.client.get_received()
         print received
 

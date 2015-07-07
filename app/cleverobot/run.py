@@ -122,7 +122,7 @@ def end_recognition(msg):
         cbc = fsocketio.session['chatbot']
         fsocketio.leave_room(cbc.name)
         fsocketio.close_room(cbc.name)
-        cbc.terminate()  # TODO
+        cbc.kill()
     except botex.BotEndException as exp:
         app.logger.error('Error on end: %s\n%s', exp, msg)
     finally:
