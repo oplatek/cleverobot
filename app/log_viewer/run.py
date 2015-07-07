@@ -113,14 +113,16 @@ def _store_to_queue(msg, chatbot_id):
 
 def _gen_data(cbc, ms, timeout=1.0):
     original_response, user_said, current_system = None, None, None
-    print 'debug0', ms
     for is_user, utt in ms:
         if is_user:
             user_said = utt
             cbc.send(wrap_msg(utt))
             try:
                 gevent.sleep(0)
-                current_system = answers[cbc.name].get(timeout=timeout)
+                current_system_msg = answers[cbc.name].get(timeout=timeout)
+                assert 'utterance' in current_system_msg
+                assert current_system_msg['user'] == 'ChatBot'
+                current_system = current_system_msg['utterance']
             except Empty:
                 app.logger.debug('System not responded to "%s"' % utt)
                 current_system = None
