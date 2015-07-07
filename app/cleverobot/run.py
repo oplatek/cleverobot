@@ -22,6 +22,7 @@ bot_input, bot_output = 6666, 7777
 user_input, user_output = 8888, 9999
 host, port = '0.0.0.0', 3000
 ctx = zmqg.Context()
+pub2bot = ctx.socket(zmq.PUB)
 
 @app.before_request
 def log_request():
@@ -85,6 +86,8 @@ def begin_dialog(msg):
                                                         user_output,
                                                         ctx=ctx)
         cbc.start()
+        if not cbc.initialized.get():
+            raise botex.BotNotAvailableException('Chatbot cannot be initialized')
         fsocketio.join_room(cbc.name)
         app.logger.debug('ChatbotConnector initiated')
     except botex.BotNotAvailableException as exp:
@@ -156,7 +159,6 @@ def start_zmq_and_log_processes(context, bot_in, bot_out, user_in, user_out):
         forwarder_process_bot = forwarder_device_start(bot_input, bot_output, app.logger)
         forwarder_process_user = forwarder_device_start(user_input, user_output, app.logger)
 
-        pub2bot = ctx.socket(zmq.PUB)
         pub2bot.connect('tcp://127.0.0.1:%d' % bot_input)
     except Exception as e:
         app.logger.error("Exception during setup processes %s" % str(e), exc_info=True)
