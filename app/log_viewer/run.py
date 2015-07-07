@@ -1,4 +1,5 @@
 import argparse
+from collections import defaultdict
 import logging
 import os
 import gevent
@@ -18,6 +19,7 @@ bot_input, bot_output = 6665, 7776
 user_input, user_output = 8887, 9998
 host, port = '0.0.0.0', 4000
 ctx = zmqg.Context()
+answers = defaultdict(Queue)
 
 
 def normalize_path(path):
@@ -103,51 +105,48 @@ def _read_conversation(abs_path):
     return msgs
 
 
+def _store_to_queue(msg, chatbot_id):
+    print 'debug 222'
+    app.logger.debug('Received answer %s from %s' % (msg, chatbot_id))
+    answers[chatbot_id].put(msg)
 
-def _replay_log(abs_path, timeout=2.5):
 
-    answers = Queue()
+def _gen_data(cbc, ms, timeout=1.0):
+    original_response, user_said, current_system = None, None, None
+    for is_user, utt in ms:
+        if is_user:
+            user_said = utt
+            cbc.send(wrap_msg(utt))
+            try:
+                gevent.sleep(0)
+                current_system = answers[cbc.name].get(timeout=timeout)
+            except Empty:
+                app.logger.debug('System not responded to "%s"' % utt)
+                current_system = None
+        else:
+            original_response = utt
 
-    def store_to_queue(msg, chatbot_id):
-        print 'debug 222'
-        app.logger.debug('Received answer %s from %s' % (msg, chatbot_id))
-        answers.put(msg)
+        if current_system is not None or original_response is not None:
+            yield user_said, original_response, current_system
+            original_response, user_said, current_system = None, None, None
 
-    cbc = ChatBotConnector(store_to_queue, bot_input, bot_output, user_input, user_output, ctx=ctx)
+        while not answers.empty():
+            _cur_sys = answers.get()
+            yield None, None, _cur_sys
+
+
+def _replay_log(abs_path):
+
+    cbc = ChatBotConnector(_store_to_queue, bot_input, bot_output, user_input, user_output, ctx=ctx)
     cbc.start()
-
     if not cbc.initialized.get():
         return render_template("error.html", msg="Chatbot not initialized")
 
     msgs = _read_conversation(abs_path)
 
-    def g(ms):
-        original_response, user_said, current_system = None, None, None
-        for is_user, utt in ms:
-            if is_user:
-                user_said = utt
-                cbc.send(wrap_msg(utt))
-                try:
-                    gevent.sleep(0)
-                    current_system = answers.get(timeout=timeout)
-                except Empty:
-                    app.logger.debug('System not responded to "%s"' % utt)
-                    current_system = None
-            else:
-                original_response = utt
-
-            if current_system is not None or original_response is not None:
-                yield user_said, original_response, current_system
-                original_response, user_said, current_system = None, None, None
-
-            while not answers.empty():
-                _cur_sys = answers.get()
-                yield None, None, _cur_sys
-        print 'debug 102', cbc.initialized, str(cbc)
-        cbc.kill()
-
-    print 'debug 101', cbc.initialized, str(cbc)
-    return Response(stream_with_context(_stream_template('log.html', data=g(msgs))))
+    res = Response(stream_with_context(_stream_template('log.html', data=_gen_data(cbc,msgs))))
+    cbc.kill()
+    return res
 
 
 @app.route('/log')
