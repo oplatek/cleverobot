@@ -1,14 +1,14 @@
 import argparse
 import logging
 import os
+import gevent
 from zmq.utils import jsonapi
 from app.cleverobot.run import start_zmq_and_log_processes, shut_down
 import zmq.green as zmqg
-from flask import Flask, render_template, current_app, request, jsonify, url_for, Response, stream_with_context
+from flask import Flask, render_template, current_app, request, Response, stream_with_context
 import functools
 from cbot.bot import ChatBotConnector, wrap_msg
 from gevent.queue import Queue, Empty
-from gevent import Timeout
 
 app = Flask(__name__)
 app.secret_key = 12345  # TODO
@@ -104,15 +104,19 @@ def _read_conversation(abs_path):
 
 
 
-def _replay_log(abs_path, timeout=0.5):
+def _replay_log(abs_path, timeout=2.5):
 
-    awnswers = Queue()
+    answers = Queue()
 
     def store_to_queue(msg, chatbot_id):
-        app.logger.debug('Received awnswer %s from %s' % (msg, chatbot_id))
-        awnswers.put(msg)
+        print 'debug 222'
+        app.logger.debug('Received answer %s from %s' % (msg, chatbot_id))
+        answers.put(msg)
 
     cbc = ChatBotConnector(store_to_queue, bot_input, bot_output, user_input, user_output, ctx=ctx)
+    cbc.start()
+    cbc.initialized.wait(timeout)
+
     msgs = _read_conversation(abs_path)
 
     def g(ms):
@@ -121,22 +125,25 @@ def _replay_log(abs_path, timeout=0.5):
             if is_user:
                 user_said = utt
                 cbc.send(wrap_msg(utt))
+                try:
+                    gevent.sleep(0)
+                    current_system = answers.get(timeout=timeout)
+                except Empty:
+                    app.logger.debug('System not responded to "%s"' % utt)
+                    current_system = None
             else:
                 original_response = utt
-
-            try:
-                current_system = awnswers.get(timeout=timeout)
-            except Empty:
-                current_system = None
 
             if current_system is not None or original_response is not None:
                 yield user_said, original_response, current_system
                 original_response, user_said, current_system = None, None, None
 
-            while not awnswers.empty():
-                _cur_sys = awnswers.get()
+            while not answers.empty():
+                _cur_sys = answers.get()
                 yield None, None, _cur_sys
+        print 'debug 102', cbc.initialized, str(cbc)
 
+    print 'debug 101', cbc.initialized, str(cbc)
     return Response(stream_with_context(_stream_template('log.html', data=g(msgs))))
 
 
