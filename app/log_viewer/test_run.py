@@ -24,13 +24,13 @@ class RoutingTestCase(unittest.TestCase):
 
     def test_log_views(self):
         rs = self.client.get('/')
-        assert 'test_dm_logic.log' in rs.data
+        self.assertIn('test_dm_logic.log', rs.data)
 
     def test_display_recorded_data(self):
         rs = self.client.get('/log?path=test_dm_logic.log')
-        assert "Hello" in rs.data  # first user utterance
-        assert "Hi" in rs.data  # first original bad system response
-        assert "What do? you?" in rs.data  # original bad system
+        self.assertIn("Hello", rs.data)  # first user utterance
+        self.assertIn("Hi", rs.data)  # first original bad system response
+        self.assertIn("What do? you?", rs.data)  # original bad system
 
     def test_current_system_reply(self):
         rs = self.client.get('/log?path=test_dm_logic.log')
@@ -42,6 +42,6 @@ class RoutingTestCase(unittest.TestCase):
         print 'All responses: %s\n' % current_system
         non_none_current_system = [s for s in current_system if s != 'null']
         print 'Non null responses: %s\n' % non_none_current_system
-        assert len(non_none_current_system) > 0
+        self.assertTrue(len(non_none_current_system) > 0)
 
 

@@ -87,7 +87,8 @@ def begin_dialog(msg):
                                                         ctx=ctx)
         cbc.start()
         if not cbc.initialized.get():
-            raise botex.BotNotAvailableException('Chatbot cannot be initialized')
+            app.logger.debug('Chatbot cannot be initialized')
+            raise botex.BotNotAvailableException()
         fsocketio.join_room(cbc.name)
         app.logger.debug('ChatbotConnector initiated')
     except botex.BotNotAvailableException as exp:
