@@ -146,7 +146,7 @@ def shut_down(forwarder_process_bot, forwarder_process_user, log_process):
         log_process.join(timeout=0.1)
 
 
-def start_zmq_and_log_processes(context, bot_in, bot_out, user_in, user_out):
+def start_zmq_and_log_processes(ctx, bot_in, bot_out, user_in, user_out):
     log_process, forwarder_process_bot, forwarder_process_user = None, None, None
     try:
         log_process = Process(target=log_loop, kwargs={'log_name': log_name})
@@ -156,8 +156,8 @@ def start_zmq_and_log_processes(context, bot_in, bot_out, user_in, user_out):
         werkzeug_logger = logging.getLogger('werkzeug')
         connect_logger(werkzeug_logger, ctx)
 
-        forwarder_process_bot = forwarder_device_start(bot_input, bot_output, app.logger)
-        forwarder_process_user = forwarder_device_start(user_input, user_output, app.logger)
+        forwarder_process_bot = forwarder_device_start(bot_in, bot_out, app.logger)
+        forwarder_process_user = forwarder_device_start(user_in, user_out, app.logger)
 
         pub2bot.connect('tcp://127.0.0.1:%d' % bot_input)
     except Exception as e:
