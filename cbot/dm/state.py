@@ -75,7 +75,10 @@ class SimpleTurnState(object):
         self.user_actions = OrderedDict()  # Keys are action type == class_names, values instances
         self._dat_ngrams = [{NoOp: 1.0}] * self.dat_ngrams_n  # P(d_t, d_{t-1}, d_{t-2} | utt_t, utt_{t-1}, utt_{t-2})
 
-        self._backup_attributes = ['current_user_utterance', 'user_mentions', 'system_actions', 'user_dat', '']
+        self._backup_attributes = ['current_user_utterance', 'user_mentions', 'user_actions', 'system_actions']
+
+    def __str__(self):
+        return ' '.join(['%s: %s' % (att, self.__getattribute__(att)) for att in self._backup_attributes])
 
     def dat_lm(self, ngram_tuple):
         # TODO LM modeling of tuples using self.dat_trans_prob

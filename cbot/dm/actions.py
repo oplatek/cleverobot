@@ -42,10 +42,10 @@ class BaseAction(object):
         self.args = {}
         self.reward = 1.0
         self.value = 1.0  # consider it probability during SLU # TODO fix
-        self.surface_form = None
         # Override possibly the default values by
         for key, value in properties.items():
             setattr(self, key, value)
+        self._backup_attributes = ['args', 'why_features']
 
     @classmethod
     @abc.abstractmethod
@@ -83,10 +83,11 @@ class BaseAction(object):
         pass
 
     def __str__(self):
-        if self.surface_form is not None:
-            return str(self.surface_form)
-        else:
-            return self.description()
+        return ' '.join(['%s: %s' % (att, self.__getattribute__(att)) for att in self._backup_attributes])
+
+    def __repr__(self):
+        def_repr = super(BaseAction, self).__repr__()
+        return '%s: %s' % (def_repr, self)
 
 
 class NoOp(BaseAction):
@@ -365,7 +366,7 @@ class Hello(BaseAction):
         return greetings
 
     def description(self):
-        return "I said hello to you. In fact I said: '%s'" % self.surface_form
+        return "I said hello to you."
 
     def act(self):
         # TODO use nlg module, sample from more greetings, enable propagate propagation to NLG module
@@ -394,7 +395,7 @@ class GoodBye(BaseAction):
 
     def description(self):
         # TODO use nlg for the description
-        return "I said goodbye. I used the words '%s'" % self.surface_form
+        return "I said goodbye."
 
     def act(self):
         # TODO nlg

@@ -84,8 +84,6 @@ def _stream_template(template_name, **context):
     app.update_template_context(context)
     t = app.jinja_env.get_template(template_name)
     rv = t.stream(context)
-    # uncomment if you don't need immediate reaction
-    ##rv.enable_buffering(5)
     return rv
 
 

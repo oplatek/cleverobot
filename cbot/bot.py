@@ -301,7 +301,7 @@ class ChatBot(multiprocessing.Process):
         self.poller.register(self.die_signal, zmq.POLLIN)
 
     def single_process_init(self):
-        self.logger = logging.getLogger(self.__class__.__name__ + str(self.name))
+        self.logger = logging.getLogger(str(self.name))
         name = '%s_%s' % (time.time(), self.name)
         self.logger.addHandler(create_local_logging_handler(name, suffix='input_output', log_level=logging.INFO))
         self.logger.addHandler(create_local_logging_handler(name, suffix='dm_logic', log_level=logging.WARNING))
@@ -330,6 +330,7 @@ class ChatBot(multiprocessing.Process):
                 continue
             self.policy.update_state(Utterance(msg['utterance']))
             response = self.policy.act()
+            self.logger.info("state after system action:%s", self.policy.state)
             self.send_msg(response)
 
 
