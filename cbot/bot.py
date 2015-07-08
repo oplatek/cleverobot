@@ -303,8 +303,8 @@ class ChatBot(multiprocessing.Process):
     def single_process_init(self):
         self.logger = logging.getLogger(str(self.name))
         name = '%s_%s' % (time.time(), self.name)
-        self.logger.addHandler(create_local_logging_handler(name, suffix='input_output', log_level=logging.INFO))
-        self.logger.addHandler(create_local_logging_handler(name, suffix='dm_logic', log_level=logging.WARNING))
+        self.logger.addHandler(create_local_logging_handler(name, suffix='dm_logic', log_level=logging.INFO))
+        self.logger.addHandler(create_local_logging_handler(name, suffix='input_output', log_level=logging.WARNING))
 
         self.kb = kb.KnowledgeBase()
         self.kb.load_default_models()

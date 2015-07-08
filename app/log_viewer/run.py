@@ -96,10 +96,7 @@ def _read_conversation(abs_path):
                 msg = jsonapi.loads(line)
                 assert 'user' in msg
                 assert 'utterance' in msg
-                if msg['user'] == 'human':
-                    msgs.append((True, msg['utterance']))
-                else:
-                    msgs.append((False, msg['utterance']))
+                msgs.append((msg['user'], msg['utterance']))
             except ValueError as e:
                 app.logger.warning('Skipping utterance %s cannot parse as json (Exception: %s)' % (line, e))
     return msgs
@@ -112,8 +109,8 @@ def _store_to_queue(msg, chatbot_id):
 
 def _gen_data(cbc, ms, timeout=0.1):
     user_said, original_response, current_system = [], [],[]
-    for is_user, utt in ms:
-        if is_user:
+    for user, utt in ms:
+        if user == 'human':
             user_said.append(utt)
             cbc.send(wrap_msg(utt))
             try:
@@ -129,7 +126,6 @@ def _gen_data(cbc, ms, timeout=0.1):
         else:
             original_response.append(utt)
         if len(user_said) > 0 and (len(original_response) > 0 or len(current_system) > 1):
-            print 'debug\n', user_said, original_response, current_system, '\n debug'
             for u, o, c in izip_longest(user_said, original_response, current_system):
                 yield u, o, c
             user_said, original_response, current_system = [], [],[]
