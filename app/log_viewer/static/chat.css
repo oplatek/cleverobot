@@ -16,7 +16,12 @@
     background-color: #99CCFF;
 }
 
-#messages { 
+.belief_state {
+    background-color: #88CCFF;
+    font-size: 80%;
+}
+
+#messages {
     margin: 0; 
     padding: 0; 
     list-style-type: none; 

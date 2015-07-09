@@ -330,7 +330,7 @@ class ChatBot(multiprocessing.Process):
                 continue
             self.policy.update_state(Utterance(msg['utterance']))
             response = self.policy.act()
-            self.logger.info("state after system action:%s", self.policy.state)
+            self.logger.info("belief state:%s", self.policy.state)
             self.send_msg(response)
 
 

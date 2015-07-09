@@ -22,7 +22,7 @@ user_input, user_output = 8887, 9998
 host, port = '0.0.0.0', 4000
 ctx = zmqg.Context()
 answers = defaultdict(Queue)
-
+bs_phrase = 'belief state:'
 
 def normalize_path(path):
     abs_path = os.path.realpath(os.path.join(root, path))
@@ -91,6 +91,8 @@ def _read_conversation(abs_path):
     with open(abs_path, 'r') as r:
         msgs = []
         for line in r:
+            if line.startswith(bs_phrase):
+                msgs.append((bs_phrase, line[len(bs_phrase):]))
             try:
                 user_input, original_system, current_system = None, None, None
                 msg = jsonapi.loads(line)
@@ -108,7 +110,7 @@ def _store_to_queue(msg, chatbot_id):
 
 
 def _gen_data(cbc, ms, timeout=0.1):
-    user_said, original_response, current_system = [], [],[]
+    user_said, original_response, current_system, belief_state = [], [],[], []
     for user, utt in ms:
         if user == 'human':
             user_said.append(utt)
@@ -123,14 +125,18 @@ def _gen_data(cbc, ms, timeout=0.1):
                     current_system.append(m['utterance'])
             except Empty:
                 app.logger.debug('System not responded to "%s"' % utt)
-        else:
+        elif user == 'ChatBot':
             original_response.append(utt)
+        elif user == bs_phrase:
+            belief_state.append(utt)
+        else:
+            raise NotImplemented()
         if len(user_said) > 0 and (len(original_response) > 0 or len(current_system) > 1):
-            for u, o, c in izip_longest(user_said, original_response, current_system):
-                yield u, o, c
-            user_said, original_response, current_system = [], [],[]
-    for u, o, c in izip_longest(user_said, original_response, current_system):
-        yield u, o, c
+            for u, o, c, b in izip_longest(user_said, original_response, current_system, belief_state):
+                yield u, o, c, b
+            user_said, original_response, current_system, belief_state = [], [], [], []
+    for u, o, c, b in izip_longest(user_said, original_response, current_system, belief_state):
+        yield u, o, c, b
     cbc.kill()
 
 
@@ -141,7 +147,6 @@ def _replay_log(abs_path):
         res = render_template("error.html", msg="Chatbot not initialized")
     else:
         msgs = _read_conversation(abs_path)
-        print 'Debug 1'
         res = Response(stream_with_context(_stream_template('log.html', data=_gen_data(cbc, msgs))))
     return res
 
