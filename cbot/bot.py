@@ -92,8 +92,11 @@ def connect_logger(logger, context, address=LOGGING_ADDRESS):
     pub = context.socket(zmq.PUB)
     pub.connect(address)
     handler = PUBHandler(pub)
-    PUBHandler.formatters[logging.DEBUG] = logging.Formatter(
-        "%(levelname)s %(filename)s:%(lineno)d %(funcName)s:\n\t%(message)s\n")
+    f = logging.Formatter("%(levelname)s %(filename)s:%(lineno)d %(funcName)s:\n\t%(message)s\n")
+    # FIXME hack -> rewrite nicely
+    PUBHandler.formatters[logging.DEBUG] = f
+    PUBHandler.formatters[logging.WARNING] = f
+    PUBHandler.formatters[logging.INFO] = f
     logger.addHandler(handler)
     
     # Let the logs be filter at the listener.

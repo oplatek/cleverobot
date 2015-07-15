@@ -1,10 +1,9 @@
 import argparse
 from collections import defaultdict
 from itertools import izip_longest
+import json
 import logging
 import os
-import gevent
-from gevent.event import Event
 from zmq.utils import jsonapi
 from app.cleverobot.run import start_zmq_and_log_processes, shut_down
 import zmq.green as zmqg
@@ -12,11 +11,13 @@ from flask import Flask, render_template, current_app, request, Response, stream
 import functools
 from cbot.bot import ChatBotConnector, wrap_msg
 from gevent.queue import Queue, Empty
+import logging.config
 
 app = Flask(__name__)
 app.secret_key = 12345  # TODO
 root = os.path.realpath(os.path.join(os.path.dirname(__file__), '../../cbot/logs'))
 log_name = 'logs.cleverobot.log'
+log_config = os.path.realpath(os.path.join(os.path.dirname(__file__), 'log_viewer_logging_config.json'))
 bot_input, bot_output = 6665, 7776
 user_input, user_output = 8887, 9998
 host, port = '0.0.0.0', 4000
@@ -143,6 +144,7 @@ def _gen_data(cbc, ms, timeout=0.1):
 def _replay_log(abs_path):
     cbc = ChatBotConnector(_store_to_queue, bot_input, bot_output, user_input, user_output, ctx=ctx)
     cbc.start()
+    # TODO fix handlers so it does not polute the logs with user human interactive communication
     if not cbc.initialized.get():
         res = render_template("error.html", msg="Chatbot not initialized")
     else:
@@ -169,6 +171,15 @@ def internal_server_err(e):
     return render_template("error.html", error='500', msg=e), 500
 
 
+def setup_logging(config_path, default_level=logging.DEBUG):
+    if os.path.exists(config_path):
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            logging.config.dictConfig(config)
+    else:
+        logging.basicConfig(level=default_level)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='cleverobot app')
     parser.add_argument('-p', '--port', type=int, default=port)
@@ -182,16 +193,18 @@ if __name__ == '__main__':
     parser.add_argument('--bot-output', type=int, default=bot_output)
     parser.add_argument('--user-input', type=int, default=user_input)
     parser.add_argument('--user-output', type=int, default=user_output)
+    parser.add_argument('--log-config', default=log_config)
     args = parser.parse_args()
 
     bot_input, bot_output = args.bot_input, args.bot_output
     user_input, user_output = args.user_input, args.user_output
-    host, port, log_name = args.host, args.port, args.log
+    host, port, log_name, log_config = args.host, args.port, args.log, args.log_config
 
     root = os.path.realpath(args.root)
     if not os.path.isdir(root):
         raise KeyError("argument root is not a directory: %s" % root)
 
+    setup_logging(log_config)
     log_process, forwarder_process_bot, forwarder_process_user = start_zmq_and_log_processes(ctx, bot_input, bot_output, user_input, user_output)
     try:
         app.run(host=host, port=port, debug=args.debug, use_reloader=False)
