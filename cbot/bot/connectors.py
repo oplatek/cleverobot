@@ -21,6 +21,32 @@ import cbot.kb as kb
 from gevent.event import AsyncResult
 
 
+class ChatBot(object):
+    def __init__(self, name, send_reply):
+        self.send_reply = send_reply
+        self.name = str(name)
+
+        self.logger = logging.getLogger(str(self.name))
+        name = '%s_%s' % (time.time(), self.name)
+        self.logger.addHandler(cblog.create_local_logging_handler(name, suffix='dm_logic', log_level=logging.INFO))
+        self.logger.addHandler(cblog.create_local_logging_handler(name, suffix='input_output', log_level=logging.WARNING))
+
+        self.kb = kb.KnowledgeBase()
+        self.kb.load_default_models()
+        self.kb.add_triplets(data)
+
+        dat_trans_prob = None  # TODO load transition probabilities, update them online for well accepted dialogues
+        self.policy = RuleBasedPolicy(self.kb, SimpleTurnState(dat_trans_prob))
+
+    def receive_msg(self, msg):
+        assert msg is not None
+        self.policy.update_state(Utterance(msg['utterance']))
+        response = self.policy.act()
+        self.logger.info("belief state: %s" % self.policy.state)
+        self.send_reply(response)
+
+
+
 def forwarder_device_start(frontend_port, backend_port, logger=None):
     forwarder = ProcessDevice(zmq.FORWARDER, zmq.SUB, zmq.PUB)
     forwarder.setsockopt_in(zmq.SUBSCRIBE, b'')
@@ -94,7 +120,6 @@ class ChatBotConnector(Greenlet):
         return self.bot.name
 
     def send(self, msg):
-        print self.initialized.get()  # May block if not initialized
         assert self.initialized.get()  # May block if not initialized
         assert 'utterance' in msg
         msg['user'] = 'human'
@@ -133,25 +158,13 @@ class ChatBotConnector(Greenlet):
 
 
 class ChatBotProcess(multiprocessing.Process):
-    """Chatbot class organise the communication between
-    subtasks processes or implement easy subtask itself.
-
-    If the subtask is:
-    a) too time consuming
-    b) needs to generate events asynchronously
-    it was split it to process and registered using zmq sockets.
-    The obvious necessary sockets used are for input and output
-    of the chatbot.
-    """
-
     def __init__(self, name, input_port, output_port):
         super(self.__class__, self).__init__()
         self.name = str(int(name))
         assert isinstance(input_port, int) and isinstance(output_port, int)
         self.input_port, self.output_port = input_port, output_port
-
+        self.logger = logging.getLogger(str(name))
         self.should_run = lambda: True
-        self.logger, self.kb, self.policy = None, None, None
 
     def __repr__(self):
         super_info = super(self.__class__).__str__()
@@ -160,7 +173,7 @@ class ChatBotProcess(multiprocessing.Process):
         str_repr += super_info
         return str_repr
 
-    def receive_msg(self):
+    def receive_msg(self, chatbot):
         # TODO use json validation
         socks = dict(self.poller.poll())
         # Normal conversation
@@ -170,8 +183,8 @@ class ChatBotProcess(multiprocessing.Process):
             # hack - control signal from user
             if msg['utterance'].lower() == 'your id' or msg['utterance'].lower() == 'your id, please!':
                 self.send_msg(self.name)
-                return None
-            return msg
+            else:
+                chatbot.receive_msg(msg)  # Normal conversation
         # Control signals
         if self.die_signal in socks and socks[self.die_signal] == zmq.POLLIN:
             self.should_run = lambda: False
@@ -186,18 +199,18 @@ class ChatBotProcess(multiprocessing.Process):
             self.logger.debug('ChatBot %s received stats request', self.name)
             stats = {'time': time.time(), 'history_len': len(self.policy.state.history)}
             self.osocket.send_string('stat_%s %s' % (self.name, jsonapi.dumps(stats)))
-        return None
 
     def send_msg(self, utt):
-        if utt is not None:
-            msg = {
-                'utterance': utt,
-                'time': time.time(),
-                'user': self.__class__.__name__,
-                'session': self.name,
-            }
-            self.logger.warning('%s', jsonapi.dumps(msg))
-            self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
+        if utt is None:
+            return
+        m = {
+            'utterance': utt,
+            'time': time.time(),
+            'user': self.__class__.__name__,
+            'session': self.name,
+        }
+        self.logger.warning('%s', jsonapi.dumps(m))
+        self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(m)))
 
     def zmq_init(self):
         self.context = zmq.Context()
@@ -221,52 +234,31 @@ class ChatBotProcess(multiprocessing.Process):
         self.poller.register(self.init_sync_signal, zmq.POLLIN)
         self.poller.register(self.die_signal, zmq.POLLIN)
 
-    def single_process_init(self):
-        self.logger = logging.getLogger(str(self.name))
-        name = '%s_%s' % (time.time(), self.name)
-        self.logger.addHandler(cblog.create_local_logging_handler(name, suffix='dm_logic', log_level=logging.INFO))
-        self.logger.addHandler(cblog.create_local_logging_handler(name, suffix='input_output', log_level=logging.WARNING))
-
-        self.kb = kb.KnowledgeBase()
-        self.kb.load_default_models()
-        self.kb.add_triplets(data)
-
-        dat_trans_prob = None  # TODO load transition probabilities, update them online for well accepted dialogues
-        self.policy = RuleBasedPolicy(self.kb, SimpleTurnState(dat_trans_prob))
-
     def run(self):
-        self.single_process_init()
+        self.logger = logging.getLogger(str(self.name))  # reinitializing after fork
+        chatbot = ChatBot(self.name, self.send_msg)
         self.logger.debug('Starting zmq_init synchronisation.')
         self.zmq_init()
         self.logger.debug('Connect zmq logger')
         cblog.connect_logger(self.logger, self.context)
-        self.logger.debug('Chatbot properties:\n%s', str(self))
-        self.chatbot_loop()
-
-    def chatbot_loop(self):
-        self.logger.debug('Entering ChatBot loop: waiting for user input')
+        self.logger.debug(str(self))
         while self.should_run():
-            msg = self.receive_msg()
-            if msg is None:
-                continue
-            self.policy.update_state(Utterance(msg['utterance']))
-            response = self.policy.act()
-            self.logger.info("belief state: %s" % self.policy.state)
-            self.send_msg(response)
+            self.receive_msg(chatbot)
 
 
 if __name__ == '__main__':
-    print("""Chatbot demo without zmq and multiprocessing.""")
-    bot = ChatBotProcess(name=str(123), input_port=-6, output_port=-66)
+    print("""ChatBot demo without zmq and multiprocessing.""")
+
+    def send_msg(x):
+        print('Bot > %s\n' % x)
 
     def get_msg():
         utt = raw_input("\nYou > ")
         return {'time': time.time(), 'user': 'human', 'utterance': utt}
 
-    def send_msg(x):
-        print('Bot > %s\n' % x)
+    cb = ChatBot("Command line bot", send_msg)
+    msg = {'utterance': None}
 
-    bot.receive_msg = get_msg
-    bot.send_msg = send_msg
-    bot.single_process_init()
-    bot.chatbot_loop()
+    while msg['utterance'] != 'end':
+        msg = get_msg()
+        cb.receive_msg(msg)

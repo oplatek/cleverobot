@@ -7,7 +7,7 @@ import logging
 import time
 import random
 import gevent
-from cbot.bot.connectors import ChatBotProcess, ChatBotConnector, forwarder_device_start
+from cbot.bot.connectors import ChatBotProcess, ChatBotConnector, forwarder_device_start, ChatBot
 from cbot.bot.log import connect_logger, wrap_msg, log_loop
 import datetime
 import sys
@@ -75,14 +75,12 @@ class ChatBotOneAnswerTest(unittest.TestCase):
     def setUp(self):
         log = logging.getLogger(self.__class__.__name__ + '.setUp')
         seed = random.randint(0, sys.maxint)
-        print('Using seed: %d' % seed)
         log.info('Using seed: %d' % seed)
         random.seed(seed)
         self.should_run = True
         self.output, self.input = None, None
         self.test_start = datetime.datetime.now()
         self.timeout = 1.0
-        self.bot = ChatBotProcess(name=str(123), input_port=-6, output_port=-66)
 
         def should_run():
             if not self.should_run:
@@ -91,20 +89,17 @@ class ChatBotOneAnswerTest(unittest.TestCase):
                 return False
             return True
 
-        self.bot.should_run = should_run
-
         def send(msg):
             self.output = msg
-            self.should_run = False
 
-        self.bot.send_msg = send
+        self.should_run = should_run
+        self.cb = ChatBot(self.__class__.__name__, send)
 
         def receive_msg():
             return {'time': time.time(), 'user': 'human', 'utterance': self.input}
 
-        self.bot.receive_msg = receive_msg
+        self.receive_msg = receive_msg
         log.debug('Test started at %s with timeout %s' % (self.test_start, self.timeout))
-        self.bot.single_process_init()
         log.debug("Bot initialized")
 
     def test_hi(self):
@@ -112,7 +107,7 @@ class ChatBotOneAnswerTest(unittest.TestCase):
         self.assertIsNone(self.output)
         self.input = 'hi'
         print("User: %s" % self.input)
-        self.bot.chatbot_loop()
+        self.cb.receive_msg(self.receive_msg())
         print("System: %s" % self.output)
         self.assertIsNotNone(self.output)
 
@@ -120,16 +115,15 @@ class ChatBotOneAnswerTest(unittest.TestCase):
         self.assertIsNone(self.output)
         self.input = 'I know Little Richard'
         print("User: %s" % self.input)
-        self.bot.chatbot_loop()
+        self.cb.receive_msg(self.receive_msg())
         print("System: %s" % self.output)
 
     def test_test_input(self):
         self.assertIsNone(self.output)
         self.input = 'test'
         print("User: %s" % self.input)
-        self.bot.chatbot_loop()
+        self.cb.receive_msg(self.receive_msg())
         print("System: %s" % self.output)
-
 
 
 if __name__ == '__main__':

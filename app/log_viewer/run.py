@@ -9,14 +9,14 @@ from app.cleverobot.run import start_zmq_and_log_processes, shut_down
 import zmq.green as zmqg
 from flask import Flask, render_template, current_app, request, Response, stream_with_context
 import functools
-from cbot.bot.connectors import ChatBotConnector
+from cbot.bot.connectors import ChatBotConnector, ChatBotProcess
 from cbot.bot.log import wrap_msg
 from gevent.queue import Queue, Empty
 
 
 app = Flask(__name__)
 app.secret_key = 12345  # TODO
-root = os.path.realpath(os.path.join(os.path.dirname(__file__), '../../cbot/logs'))
+root = os.path.realpath(os.path.join(os.path.dirname(__file__), '../../cbot/bot/logs'))
 log_name = 'logs.cleverobot.log'
 log_config = os.path.realpath(os.path.join(os.path.dirname(__file__), 'log_viewer_logging_config.json'))
 bot_input, bot_output = 6665, 7776
@@ -127,12 +127,12 @@ def _gen_data(cbc, ms, timeout=0.1):
                     current_system.append(m['utterance'])
             except Empty:
                 app.logger.debug('System not responded to "%s"' % utt)
-        elif user == 'ChatBot':
+        elif user == 'ChatBotProcess':
             original_response.append(utt)
         elif user == bs_phrase:
             belief_state.append(utt)
         else:
-            raise NotImplemented()
+            app.logger.critical("Unknown user %s for %s" % (user, utt))
         if len(user_said) > 0 and (len(original_response) > 0 or len(current_system) > 1):
             for u, o, c, b in izip_longest(user_said, original_response, current_system, belief_state):
                 yield u, o, c, b
