@@ -43,7 +43,6 @@ class ChatBot(object):
         assert msg is not None
         self.policy.update_state(Utterance(msg['utterance']))
         response = self.policy.act()
-        print 'DEBUG ONDRA', self.policy.state
         self.logger.info("%s%s" % (BELIEF_STATE_PREFIX, self.policy.state))
         self.send_reply(response)
 

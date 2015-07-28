@@ -27,6 +27,7 @@ class ChatBotJsonEncoder(json.JSONEncoder):
                     d[str(k)] = v
                 for k, v in d.iteritems():
                     d[k] = flatten(v)
+                return d
             elif isinstance(d, BaseAction):
                 return repr(d)
             else:
