@@ -6,8 +6,8 @@ import time
 from flask import Flask, render_template, current_app, request, jsonify
 import flask.ext.socketio as fsocketio
 import argparse
-from cbot.bot import ChatBotConnector, log_loop, connect_logger, topic_msg_to_json, LOGGING_ADDRESS
-from cbot.bot import forwarder_device_start
+from cbot.bot.connectors import ChatBotConnector, forwarder_device_start
+from cbot.bot.log import log_loop, connect_logger, topic_msg_to_json
 import cbot.bot_exceptions as botex
 from multiprocessing import Process
 import zmq.green as zmqg
@@ -141,10 +141,13 @@ def web_response(msg, room_id):
 def shut_down(forwarder_process_bot, forwarder_process_user, log_process):
     if forwarder_process_bot is not None:
         forwarder_process_bot.join(timeout=0.1)
+        print 'TODO terminate zmq_device'
     if forwarder_process_user is not None:
         forwarder_process_user.join(timeout=0.1)
+        print 'TODO terminate zmq_device'
     if log_process is not None:
         log_process.join(timeout=0.1)
+        log_process.terminate()
 
 
 def start_zmq_and_log_processes(ctx, bot_in, bot_out, user_in, user_out):

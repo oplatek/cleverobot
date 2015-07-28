@@ -9,9 +9,10 @@ from app.cleverobot.run import start_zmq_and_log_processes, shut_down
 import zmq.green as zmqg
 from flask import Flask, render_template, current_app, request, Response, stream_with_context
 import functools
-from cbot.bot import ChatBotConnector, wrap_msg
+from cbot.bot.connectors import ChatBotConnector
+from cbot.bot.log import wrap_msg
 from gevent.queue import Queue, Empty
-import logging.config
+
 
 app = Flask(__name__)
 app.secret_key = 12345  # TODO
@@ -24,6 +25,7 @@ host, port = '0.0.0.0', 4000
 ctx = zmqg.Context()
 answers = defaultdict(Queue)
 bs_phrase = 'belief state:'
+
 
 def normalize_path(path):
     abs_path = os.path.realpath(os.path.join(root, path))
@@ -122,7 +124,6 @@ def _gen_data(cbc, ms, timeout=0.1):
                     current_system_msgs.append(answers[cbc.name].get())
                 for m in current_system_msgs:
                     assert 'utterance' in m
-                    assert m['user'] == 'ChatBot'
                     current_system.append(m['utterance'])
             except Empty:
                 app.logger.debug('System not responded to "%s"' % utt)

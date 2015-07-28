@@ -6,14 +6,12 @@ import unittest
 import logging
 import time
 import random
-import uuid
 import gevent
-from cbot.bot import ChatBotProcess, ChatBotConnector, forwarder_device_start, log_loop, connect_logger, topic_msg_to_json, \
-    wrap_msg
+from cbot.bot.connectors import ChatBotProcess, ChatBotConnector, forwarder_device_start
+from cbot.bot.log import connect_logger, wrap_msg, log_loop
 import datetime
 import sys
 import zmq
-from zmq.utils import jsonapi
 
 
 class LoggerTest(unittest.TestCase):

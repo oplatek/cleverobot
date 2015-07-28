@@ -5,16 +5,13 @@ from greenlet import GreenletExit
 import multiprocessing
 import time
 import logging
+import cbot.bot.log as cblog
 import uuid
-import os
-import errno
-import gevent
 
 import zmq.green as zmqg
 import zmq
 from zmq.devices import ProcessDevice
 from gevent import Greenlet
-from zmq.log.handlers import PUBHandler
 from zmq.utils import jsonapi
 
 from cbot.kb.kb_data import data
@@ -22,85 +19,6 @@ from cbot.dm.state import SimpleTurnState, Utterance
 from cbot.dm.policy import RuleBasedPolicy
 import cbot.kb as kb
 from gevent.event import AsyncResult
-
-LOGGING_ADDRESS = 'tcp://127.0.0.1:6699'
-
-
-def wrap_msg(utt):
-    return {'time': time.time(), 'user': 'human', 'utterance': utt}
-
-
-def topic_msg_to_json(topic_msg):
-    json0 = topic_msg.find('{')
-    topic = topic_msg[0:json0].strip()
-    msg = jsonapi.loads(topic_msg[json0:])
-    return topic, msg
-
-
-def create_local_logging_handler(name, log_level=logging.WARNING, suffix="input_output"):
-    dir_name = os.path.dirname(os.path.abspath(__file__))
-    logger = logging.getLogger(__name__)
-    log_dir = os.path.join(dir_name, 'logs')
-    try:
-        os.mkdir(log_dir)
-    except OSError, e:
-        if e.errno != errno.EEXIST:
-            raise
-    logger.setLevel(logging.DEBUG)
-    h = logging.FileHandler(os.path.join(log_dir, '%s_%s.log' % (name, suffix)), mode='w', delay=True)
-    h.setLevel(log_level)
-    return h
-
-
-
-def log_from_subscriber(sub):
-    """
-    :param sub:socket(zmq.SUB)
-    :return:(str, str) logging.LEVEL, log message
-    """
-    level, msg = sub.recv_multipart()
-    if msg.endswith('\n'):
-        msg = msg[:-1]
-    level = level.lower()
-    logf = getattr(logging, level)
-    logf(msg)
-
-
-def log_loop(level=logging.DEBUG, address=LOGGING_ADDRESS, log_form='%(asctime)s %(message)s',log_name='common.log'):
-    import zmq
-    ctx = zmq.Context()
-    sub = ctx.socket(zmq.SUB)
-    sub.bind(address)
-    sub.setsockopt_string(zmq.SUBSCRIBE, '')
-
-    # TODO refactor all related logging functions to logging module
-    logging.basicConfig(level=level, format=log_form, filename=log_name)  # TODO rotating handler
-    console = logging.StreamHandler()
-    console.setLevel(logging.DEBUG)
-    console.setFormatter(logging.Formatter(log_form))
-    logging.getLogger('').addHandler(console)
-
-    while True:
-        log_from_subscriber(sub)
-
-
-def connect_logger(logger, context, address=LOGGING_ADDRESS):
-    """
-    Create logger for zmq.context() which need to taken from process of intended use.
-    :return: logging.Logger
-    """
-    pub = context.socket(zmq.PUB)
-    pub.connect(address)
-    handler = PUBHandler(pub)
-    f = logging.Formatter("%(levelname)s %(filename)s:%(lineno)d %(funcName)s:\n\t%(message)s\n")
-    # FIXME hack -> rewrite nicely
-    PUBHandler.formatters[logging.DEBUG] = f
-    PUBHandler.formatters[logging.WARNING] = f
-    PUBHandler.formatters[logging.INFO] = f
-    logger.addHandler(handler)
-    
-    # Let the logs be filter at the listener.
-    logger.setLevel(logging.DEBUG)
 
 
 def forwarder_device_start(frontend_port, backend_port, logger=None):
@@ -141,7 +59,7 @@ class ChatBotConnector(Greenlet):
         self.init_sync_signal.connect('tcp://127.0.0.1:%d' % user_back_port)
 
         self.logger = logging.getLogger(self.__class__.__name__ + str(name))
-        connect_logger(self.logger, self.context)
+        cblog.connect_logger(self.logger, self.context)
         self.bot = ChatBotProcess(name, bot_back_port, user_front_port)
         self.bot.start()
 
@@ -194,7 +112,7 @@ class ChatBotConnector(Greenlet):
                 socks = dict(self.poller.poll())
                 self.logger.debug('ChatBotConnector after poll')
                 if self.sub2bot in socks and socks[self.sub2bot] == zmq.POLLIN:
-                    _, msg = topic_msg_to_json(self.sub2bot.recv())
+                    _, msg = cblog.topic_msg_to_json(self.sub2bot.recv())
                     self.logger.debug('ChatBotConnector %s received bot msg %s', self.name, msg)
                     self.response(msg, self.name)
         except Exception as e:
@@ -247,7 +165,7 @@ class ChatBotProcess(multiprocessing.Process):
         socks = dict(self.poller.poll())
         # Normal conversation
         if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
-            _, msg = topic_msg_to_json(self.isocket.recv())
+            _, msg = cblog.topic_msg_to_json(self.isocket.recv())
             self.logger.warning('%s', jsonapi.dumps(msg))
             # hack - control signal from user
             if msg['utterance'].lower() == 'your id' or msg['utterance'].lower() == 'your id, please!':
@@ -306,8 +224,8 @@ class ChatBotProcess(multiprocessing.Process):
     def single_process_init(self):
         self.logger = logging.getLogger(str(self.name))
         name = '%s_%s' % (time.time(), self.name)
-        self.logger.addHandler(create_local_logging_handler(name, suffix='dm_logic', log_level=logging.INFO))
-        self.logger.addHandler(create_local_logging_handler(name, suffix='input_output', log_level=logging.WARNING))
+        self.logger.addHandler(cblog.create_local_logging_handler(name, suffix='dm_logic', log_level=logging.INFO))
+        self.logger.addHandler(cblog.create_local_logging_handler(name, suffix='input_output', log_level=logging.WARNING))
 
         self.kb = kb.KnowledgeBase()
         self.kb.load_default_models()
@@ -321,7 +239,7 @@ class ChatBotProcess(multiprocessing.Process):
         self.logger.debug('Starting zmq_init synchronisation.')
         self.zmq_init()
         self.logger.debug('Connect zmq logger')
-        connect_logger(self.logger, self.context)
+        cblog.connect_logger(self.logger, self.context)
         self.logger.debug('Chatbot properties:\n%s', str(self))
         self.chatbot_loop()
 

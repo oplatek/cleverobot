@@ -15,12 +15,13 @@ Similarly, choosing one system action increase probability of
 some actions (both human, and system), decreases probabilities of others because their incompatibility.
 """
 from __future__ import division, unicode_literals
+from scipy import stats
 import abc
 from copy import deepcopy
-# from cbot.dm.state import SimpleTurnState
+
+
 # TODO add reasons for the NLU and DM outputs
 # TODO implement reasons for actions
-from scipy import stats
 
 
 class BaseAction(object):
@@ -82,12 +83,11 @@ class BaseAction(object):
         """
         pass
 
-    def __str__(self):
-        return ' '.join(['%s: %s' % (att, self.__getattribute__(att)) for att in self._backup_attributes])
-
     def __repr__(self):
-        def_repr = super(BaseAction, self).__repr__()
-        return '%s: %s' % (def_repr, self)
+        dict_repr = {"name": self.__class__.__name__,
+                     "attributes": dict([(str(att), self.__getattribute__(att)) for att in self._backup_attributes]),
+                     "debug_info": super(BaseAction, self).__repr__(), }
+        return str(dict_repr)
 
 
 class NoOp(BaseAction):
@@ -176,7 +176,7 @@ class WhatAsk(BaseAction):
             svo['subj'] = None  # TODO discarding a lot information
             questions.append(WhatAsk("human", args=svo, why_features=['what', cuu.tokens], value=1.0))
         elif cuu.svo[1] > cuu.svo[0]:  # svo subject, verb, object -> Question
-            questions.append(WhatAsk("human", args=svo, why_features=['word order',cuu.tokens], value=0.5))
+            questions.append(WhatAsk("human", args=svo, why_features=['word order', cuu.tokens], value=0.5))
         return questions
 
     @classmethod
@@ -186,11 +186,12 @@ class WhatAsk(BaseAction):
         # TODO determine if how, where, what, who is the best
         for m, prob in incomplete_mentions:
             args = dict(zip(('entity', 'relation', 'value'), m))
-            questions.append(WhatAsk("system", args=args, value=prob, why_features=["User mentions incomplete%s" % str(m)]))
+            questions.append(
+                WhatAsk("system", args=args, value=prob, why_features=["User mentions incomplete%s" % str(m)]))
         if len(state.user_mentions) > 0:
             qs, probabilities = state.user_mentions.keys(), state.user_mentions.values()
             norm = sum(probabilities)
-            probabilities = [ p / norm for p in probabilities]
+            probabilities = [p / norm for p in probabilities]
             action_distribution = stats.rv_discrete(name='custm', values=(range(len(qs)), probabilities))
             sample_size = min(n, qs)
             selected_mentions = [qs[i] for i in action_distribution.rvs(size=sample_size)]

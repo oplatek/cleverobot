@@ -4,6 +4,7 @@ from __future__ import division, unicode_literals
 from collections import OrderedDict
 import json
 import operator
+from cbot.bot.log import ChatBotJsonEncoder
 from cbot.dm.actions import BaseAction, Reject, Hello, Deny, NoOp
 from cbot.lu.pos import PerceptronTagger, POSR
 from collections import defaultdict
@@ -78,28 +79,12 @@ class SimpleTurnState(object):
 
         self._backup_attributes = ['current_user_utterance', 'user_actions', 'system_actions']
 
-    class StateJsonEncoder(json.JSONEncoder):
-        def encode(self, obj):
-            def keys_as_str(d):
-                if isinstance(d, dict):
-                    d = dict(d)  # copy
-                    non_str_keys = [k for k in d if not (isinstance(k, str) or isinstance(k, unicode))]
-                    for k in non_str_keys:
-                        v = d[k]
-                        del d[k]
-                        d[str(k)] = v
-                    for k, v in d.iteritems():
-                        if isinstance(v, dict):
-                            d[k] = keys_as_str(v)
-                return d
-            return super(SimpleTurnState.StateJsonEncoder, self).encode(keys_as_str(obj))
-
     def __repr__(self):
         bsd = {'name': self.__class__.__name__,
                'debug_info': super(SimpleTurnState, self).__repr__(),
                'attributes': dict([(str(att), self.__getattribute__(att)) for att in self._backup_attributes]),
                }
-        return SimpleTurnState.StateJsonEncoder().encode(bsd)
+        return ChatBotJsonEncoder().encode(bsd)
 
     def dat_lm(self, ngram_tuple):
         # TODO LM modeling of tuples using self.dat_trans_prob
