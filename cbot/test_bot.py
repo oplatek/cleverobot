@@ -8,7 +8,7 @@ import time
 import random
 import uuid
 import gevent
-from cbot.bot import ChatBot, ChatBotConnector, forwarder_device_start, log_loop, connect_logger, topic_msg_to_json, \
+from cbot.bot import ChatBotProcess, ChatBotConnector, forwarder_device_start, log_loop, connect_logger, topic_msg_to_json, \
     wrap_msg
 import datetime
 import sys
@@ -84,7 +84,7 @@ class ChatBotOneAnswerTest(unittest.TestCase):
         self.output, self.input = None, None
         self.test_start = datetime.datetime.now()
         self.timeout = 1.0
-        self.bot = ChatBot(name=str(123), input_port=-6, output_port=-66)
+        self.bot = ChatBotProcess(name=str(123), input_port=-6, output_port=-66)
 
         def should_run():
             if not self.should_run:

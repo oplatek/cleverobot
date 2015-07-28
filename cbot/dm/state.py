@@ -2,6 +2,7 @@
 # encoding: utf-8
 from __future__ import division, unicode_literals
 from collections import OrderedDict
+import json
 import operator
 from cbot.dm.actions import BaseAction, Reject, Hello, Deny, NoOp
 from cbot.lu.pos import PerceptronTagger, POSR
@@ -75,10 +76,30 @@ class SimpleTurnState(object):
         self.user_actions = OrderedDict()  # Keys are action type == class_names, values instances
         self._dat_ngrams = [{NoOp: 1.0}] * self.dat_ngrams_n  # P(d_t, d_{t-1}, d_{t-2} | utt_t, utt_{t-1}, utt_{t-2})
 
-        self._backup_attributes = ['current_user_utterance', 'user_mentions', 'user_actions', 'system_actions']
+        self._backup_attributes = ['current_user_utterance', 'user_actions', 'system_actions']
 
-    def __str__(self):
-        return ' '.join(['%s: %s' % (att, self.__getattribute__(att)) for att in self._backup_attributes])
+    class StateJsonEncoder(json.JSONEncoder):
+        def encode(self, obj):
+            def keys_as_str(d):
+                if isinstance(d, dict):
+                    d = dict(d)  # copy
+                    non_str_keys = [k for k in d if not (isinstance(k, str) or isinstance(k, unicode))]
+                    for k in non_str_keys:
+                        v = d[k]
+                        del d[k]
+                        d[str(k)] = v
+                    for k, v in d.iteritems():
+                        if isinstance(v, dict):
+                            d[k] = keys_as_str(v)
+                return d
+            return super(SimpleTurnState.StateJsonEncoder, self).encode(keys_as_str(obj))
+
+    def __repr__(self):
+        bsd = {'name': self.__class__.__name__,
+               'debug_info': super(SimpleTurnState, self).__repr__(),
+               'attributes': dict([(str(att), self.__getattribute__(att)) for att in self._backup_attributes]),
+               }
+        return SimpleTurnState.StateJsonEncoder().encode(bsd)
 
     def dat_lm(self, ngram_tuple):
         # TODO LM modeling of tuples using self.dat_trans_prob

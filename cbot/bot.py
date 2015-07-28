@@ -142,7 +142,7 @@ class ChatBotConnector(Greenlet):
 
         self.logger = logging.getLogger(self.__class__.__name__ + str(name))
         connect_logger(self.logger, self.context)
-        self.bot = ChatBot(name, bot_back_port, user_front_port)
+        self.bot = ChatBotProcess(name, bot_back_port, user_front_port)
         self.bot.start()
 
         self.response = response_cb
@@ -214,7 +214,7 @@ class ChatBotConnector(Greenlet):
         super(ChatBotConnector, self).kill(exception=exception, block=block, timeout=timeout)
 
 
-class ChatBot(multiprocessing.Process):
+class ChatBotProcess(multiprocessing.Process):
     """Chatbot class organise the communication between
     subtasks processes or implement easy subtask itself.
 
@@ -333,20 +333,20 @@ class ChatBot(multiprocessing.Process):
                 continue
             self.policy.update_state(Utterance(msg['utterance']))
             response = self.policy.act()
-            self.logger.info("belief state:%s", self.policy.state)
+            self.logger.info("belief state: %s" % self.policy.state)
             self.send_msg(response)
 
 
 if __name__ == '__main__':
     print("""Chatbot demo without zmq and multiprocessing.""")
-    bot = ChatBot(name=str(123), input_port=-6, output_port=-66)
+    bot = ChatBotProcess(name=str(123), input_port=-6, output_port=-66)
 
     def get_msg():
-        utt = raw_input("Tell me\n")
+        utt = raw_input("\nYou > ")
         return {'time': time.time(), 'user': 'human', 'utterance': utt}
 
     def send_msg(x):
-        print('%s\n', x)
+        print('Bot > %s\n' % x)
 
     bot.receive_msg = get_msg
     bot.send_msg = send_msg
