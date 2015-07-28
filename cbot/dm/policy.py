@@ -15,9 +15,7 @@ def sample(items, probabilities, n=1):
     return np.random.choice(items, n, norm_prob, replace=False)
 
 
-
 class RuleBasedPolicy(object):
-
     def __init__(self, kb, state):
         self.kb = kb
         self.state = state

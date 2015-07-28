@@ -5,6 +5,7 @@ from greenlet import GreenletExit
 import multiprocessing
 import time
 import logging
+from cbot.bot.alias import BELIEF_STATE_PREFIX
 import cbot.bot.log as cblog
 import uuid
 
@@ -42,7 +43,8 @@ class ChatBot(object):
         assert msg is not None
         self.policy.update_state(Utterance(msg['utterance']))
         response = self.policy.act()
-        self.logger.info("belief state: %s" % self.policy.state)
+        print 'DEBUG ONDRA', self.policy.state
+        self.logger.info("%s%s" % (BELIEF_STATE_PREFIX, self.policy.state))
         self.send_reply(response)
 
 

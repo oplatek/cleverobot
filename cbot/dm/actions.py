@@ -22,6 +22,7 @@ from copy import deepcopy
 
 # TODO add reasons for the NLU and DM outputs
 # TODO implement reasons for actions
+from cbot.bot.alias import HUMAN, SYSTEM
 
 
 class BaseAction(object):
@@ -36,7 +37,7 @@ class BaseAction(object):
         """
         Actor can be the human or the system.
         """
-        assert actor == "human" or "system"
+        assert actor == HUMAN or SYSTEM
         self.name = self.__class__.__name__
         self.actor = actor
         self.why_features = []
@@ -94,13 +95,13 @@ class NoOp(BaseAction):
     @classmethod
     def user_action_detection_factory(cls, state):
         if not state.current_user_utterance:
-            return [NoOp("human", why_features=['Conversation has not started'])]
+            return [NoOp(HUMAN, why_features=['Conversation has not started'])]
         else:
             return []
 
     @classmethod
     def reaction_factory(cls, state, n=10, probability_threshold=0.0):
-        return [NoOp("system")]
+        return [NoOp(SYSTEM)]
 
     def act(self):
         return None
@@ -129,11 +130,11 @@ class Inform(BaseAction):
                         [('I', 'choose_action', str(a)), (str(a), 'has_argument', w), ('you', 'said', w)])
                     why_features.extend(svo_expanded)
             if len(why_features) > 0:
-                informs.append((Inform("human", args=svo, why_features=why_features)))
+                informs.append((Inform(HUMAN, args=svo, why_features=why_features)))
         # Informing from unknown reason
         if len(informs) < 6:  # heuristics 3! == 6 however action may ask about the same one argument
             if not (None in svo.items()):
-                informs.append(Inform("human", args=svo, why_features=svo_expanded, value=0.5))
+                informs.append(Inform(HUMAN, args=svo, why_features=svo_expanded, value=0.5))
         # Tuning value manually
         forbidden_found = any((c in cuu for c in ['!', '?', 'ask', 'you']))  # questions are not in inform style
         welcome_found = any((c in cuu for c in ['she', 'they', 'is', 'was']))  # 3rd persona is inform style
@@ -152,7 +153,7 @@ class Inform(BaseAction):
             # for example (sacramento, is_capital, ?) -> (sacramento, is_capital, California)
             if not all((c is None for c in triplet)):
                 args = dict(zip(('entity', 'relation', 'value'), triplet))
-                informs.append(Inform("system", args=args))
+                informs.append(Inform(SYSTEM, args=args))
         return informs
 
     def description(self):
@@ -174,9 +175,9 @@ class WhatAsk(BaseAction):
         # TODO improve: check for how, where, who, ...
         if subj is not None and 'what' in subj.lower():
             svo['subj'] = None  # TODO discarding a lot information
-            questions.append(WhatAsk("human", args=svo, why_features=['what', cuu.tokens], value=1.0))
+            questions.append(WhatAsk(HUMAN, args=svo, why_features=['what', cuu.tokens], value=1.0))
         elif cuu.svo[1] > cuu.svo[0]:  # svo subject, verb, object -> Question
-            questions.append(WhatAsk("human", args=svo, why_features=['word order', cuu.tokens], value=0.5))
+            questions.append(WhatAsk(HUMAN, args=svo, why_features=['word order', cuu.tokens], value=0.5))
         return questions
 
     @classmethod
@@ -187,7 +188,7 @@ class WhatAsk(BaseAction):
         for m, prob in incomplete_mentions:
             args = dict(zip(('entity', 'relation', 'value'), m))
             questions.append(
-                WhatAsk("system", args=args, value=prob, why_features=["User mentions incomplete%s" % str(m)]))
+                WhatAsk(SYSTEM, args=args, value=prob, why_features=["User mentions incomplete%s" % str(m)]))
         if len(state.user_mentions) > 0:
             qs, probabilities = state.user_mentions.keys(), state.user_mentions.values()
             norm = sum(probabilities)
@@ -197,7 +198,7 @@ class WhatAsk(BaseAction):
             selected_mentions = [qs[i] for i in action_distribution.rvs(size=sample_size)]
             for m in selected_mentions:
                 args = dict(zip(('entity', 'relation', 'value'), m))
-                questions.append(WhatAsk("system", args=args, why_features=["User mentiones %s" % str(m)]))
+                questions.append(WhatAsk(SYSTEM, args=args, why_features=["User mentiones %s" % str(m)]))
         return questions
 
     def description(self):
@@ -217,7 +218,7 @@ class YesNoAsk(BaseAction):
         subj, verb, _ = cuu.svo
         if verb is not None and subj is not None and verb == 0:
             svo = dict(zip(('subj', 'verb', 'obj'), (cuu.tokens[i] for i in cuu.svo)))
-            questions.append(YesNoAsk("human", args=svo))
+            questions.append(YesNoAsk(HUMAN, args=svo))
         return questions
 
     @classmethod
@@ -228,7 +229,7 @@ class YesNoAsk(BaseAction):
         # should I do // problem with action selection
         # TODO store in triplet format all the actions
         # TODO confirm some of the fact from knowledgebase
-        # questions = [YesNoAsk("system", args=dict(zip(('entity', 'relation', 'value), ('You', 'did', state.last_user_action)))]
+        # questions = [YesNoAsk(SYSTEM, args=dict(zip(('entity', 'relation', 'value), ('You', 'did', state.last_user_action)))]
         questions = []
         return questions
 
@@ -254,7 +255,7 @@ class Confirm(BaseAction):
         confirms = []
         if isinstance(state.last_system_action, YesNoAsk) \
                 and confirming_surface_form(state.current_user_utterance):
-            confirms.append(Confirm("human",
+            confirms.append(Confirm(HUMAN,
                                     args=state.last_system_action.args,
                                     why_features=[state.current_user_utterance, state.last_system_action]))
         return confirms
@@ -291,7 +292,7 @@ class Reject(BaseAction):
         # TODO one may reject also request
         if isinstance(state.last_system_action, YesNoAsk) \
                 and rejecting_surface_form(state.current_user_utterance):
-            rejects.append(Reject("human",
+            rejects.append(Reject(HUMAN,
                                   args=state.last_system_action.args,
                                   why_features=[state.current_user_utterance, state.last_system_action]))
         return rejects
@@ -328,7 +329,7 @@ class Deny(BaseAction):
             for m, i in enumerate(state.system_mentions):
                 bag_m = set(m)
                 if len(bag_m & svo_bag) > 0:
-                    denies.append(Deny("human", args=svo, why_features=[negations, svo]))
+                    denies.append(Deny(HUMAN, args=svo, why_features=[negations, svo]))
         return negations
 
     @classmethod
@@ -350,14 +351,14 @@ class Hello(BaseAction):
         greetings = []
         # TODO simplistic use nlg variations or classification
         if 'hi' in state.current_user_utterance.lower():
-            greetings.append(Hello("human"))
+            greetings.append(Hello(HUMAN))
         return greetings
 
     @classmethod
     def reaction_factory(cls, state, n=1, probability_threshold=0.0):
         greetings = []
         if len(state.user_actions) < 5:
-            greetings.append(Hello("system"))
+            greetings.append(Hello(SYSTEM))
         if Hello.__class__ in state.system_actions:
             for act in greetings:
                 act.value /= 2
@@ -380,16 +381,16 @@ class GoodBye(BaseAction):
         goodbyes = []
         # TODO very very simplistic detect bye
         if "bye" in state.current_user_utterance:
-            goodbyes.append(GoodBye("human"))
+            goodbyes.append(GoodBye(HUMAN))
         return goodbyes
 
     @classmethod
     def reaction_factory(cls, state, n=10, probability_threshold=0.0):
         goodbyes = []
         if GoodBye.__class__ in state.user_actions:
-            goodbyes.append(GoodBye("system"))
+            goodbyes.append(GoodBye(SYSTEM))
         if NoOp.__class__ in state.user_actions:
-            goodbyes.append(GoodBye("system",
+            goodbyes.append(GoodBye(SYSTEM,
                                     why_features=[state.user_actions[NoOp.__class__]],
                                     value=0.5))
         return goodbyes

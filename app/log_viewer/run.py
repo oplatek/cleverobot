@@ -9,8 +9,9 @@ from app.cleverobot.run import start_zmq_and_log_processes, shut_down
 import zmq.green as zmqg
 from flask import Flask, render_template, current_app, request, Response, stream_with_context
 import functools
-from cbot.bot.connectors import ChatBotConnector, ChatBotProcess
+from cbot.bot.connectors import ChatBotConnector
 from cbot.bot.log import wrap_msg
+from cbot.bot.alias import HUMAN, BELIEF_STATE_PREFIX
 from gevent.queue import Queue, Empty
 
 
@@ -115,7 +116,7 @@ def _store_to_queue(msg, chatbot_id):
 def _gen_data(cbc, ms, timeout=0.1):
     user_said, original_response, current_system, belief_state = [], [],[], []
     for user, utt in ms:
-        if user == 'human':
+        if user == HUMAN:
             user_said.append(utt)
             cbc.send(wrap_msg(utt))
             try:
@@ -127,9 +128,9 @@ def _gen_data(cbc, ms, timeout=0.1):
                     current_system.append(m['utterance'])
             except Empty:
                 app.logger.debug('System not responded to "%s"' % utt)
-        elif user == 'ChatBotProcess':
+        elif user == 'ChatBotProcess':  # TODO use alias SYSTEM
             original_response.append(utt)
-        elif user == bs_phrase:
+        elif user == BELIEF_STATE_PREFIX:
             belief_state.append(utt)
         else:
             app.logger.critical("Unknown user %s for %s" % (user, utt))

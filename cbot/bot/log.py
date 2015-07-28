@@ -7,9 +7,8 @@ from zmq.log.handlers import PUBHandler
 from zmq.utils import jsonapi
 import logging
 import zmq
+from cbot.bot.alias import LOGGING_ADDRESS
 from cbot.dm.actions import BaseAction
-
-LOGGING_ADDRESS = 'tcp://127.0.0.1:6699'
 
 
 class ChatBotJsonEncoder(json.JSONEncoder):
