@@ -98,7 +98,7 @@ def _stream_template(template_name, **context):
 
 def turnify_conversation(msgs):
     previous, last = 'Previous', 'Last'
-    turns, flat = [], OrderedDict(FLAT_EMPTY_TURN)
+    turns, flat = [], FLAT_EMPTY_TURN.copy()
     for m in msgs:
         if 'name' not in m and 'user' in m:
             m['name'] = m['user']  # TODO HACK FOR BACKWARD COMPATIBILITY
@@ -108,10 +108,10 @@ def turnify_conversation(msgs):
         assert last in FLAT_EMPTY_TURN, 'last %s not in FLAT_EMPTY_TURN %s' % (last, FLAT_EMPTY_TURN)
         if previous == last or all([v is not None for v in flat.values()]):
             turns.append(flat)
-            flat = OrderedDict(FLAT_EMPTY_TURN)
-        print 'DEBUG ONDRA\n', m, '\n', len(turns)
+            flat = FLAT_EMPTY_TURN.copy()
 
-    if last != 'Last' and not (previous == last or all([v is not None for v in flat.values()])):
+    not_none = [v is not None for v in flat.values()]
+    if last != 'Last' and previous != last and not all(not_none) and any(not_none):
         turns.append(flat)
     return turns
 
@@ -145,30 +145,28 @@ def _gen_data(cbc, recorded_ms, replay_listener, timeout=0.1):
     recorded_turns = turnify_conversation(recorded_ms)
     i = 0
     while i < len(recorded_turns):
-        d, i_next = recorded_turns[i], i + 1
-        if d[HUMAN] is not None:
+        i_next = i + 1
+        if recorded_turns[i][HUMAN] is not None:
+            d = recorded_turns[i]
             app.logger.debug('Sending msg to replay bot %s' % d[HUMAN])
-            cbc.send(wrap_msg(d[HUMAN]))
+            cbc.send(wrap_msg(d))
             try:
                 anws, bss = _get_answers_and_states(replay_listener, timeout)
                 for j, (a, b) in enumerate(izip_longest(anws, bss)):
                     if j == 0:
-                        d[BELIEF_STATE_REPLAY], d[REPLAYED] = b, a
+                        d[REPLAYED], d[BELIEF_STATE_REPLAY] = a, b
                         yield d
                     else:  # j >= 1
+                        i_next += 1
                         # More answer for one input
-                        if (i_next) < len(recorded_turns):
-                            d_next = recorded_turns[i_next]
-                            i_next += 1
-                            if d_next[HUMAN] is None:
-                                # If the recorded answers had more answers too
-                                d_next[BELIEF_STATE_REPLAY], d_next[REPLAYED] = b, a
-                                yield d_next
-                            else:
-                                # If the recorded HUMAN/SYSTEM answers followed regularly
-                                new_d = OrderedDict(FLAT_EMPTY_TURN)
-                                new_d[BELIEF_STATE_REPLAY], new_d[REPLAYED] = b, a
-                                yield new_d
+                        if i_next < len(recorded_turns) and  recorded_turns[i_next][HUMAN] is None:
+                            # If the recorded answers had more answers too
+                            recorded_turns[i_next][REPLAYED], recorded_turns[i_next][BELIEF_STATE_REPLAY] = a, b
+                            yield recorded_turns[i_next]
+                        else:
+                            new_d = FLAT_EMPTY_TURN.copy()
+                            new_d[REPLAYED], new_d[BELIEF_STATE_REPLAY] = a, b
+                            yield new_d
             except Empty:
                 app.logger.debug('System not responded to "%s"' % d[HUMAN])
         else:
