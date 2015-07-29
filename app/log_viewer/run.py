@@ -2,7 +2,7 @@
 # encoding: utf-8
 from __future__ import unicode_literals, division
 import argparse
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from itertools import izip_longest
 import json
 import logging
@@ -27,10 +27,10 @@ user_input, user_output = 8887, 9998
 host, port = '0.0.0.0', 4000
 ctx = zmqg.Context()
 
-FLAT_EMPTY_TURN = {BELIEF_STATE: None, SYSTEM: None, HUMAN: None}
+FLAT_EMPTY_TURN = OrderedDict([(k, None) for k in [HUMAN, SYSTEM, BELIEF_STATE]])
 PICK_VALUES_TURN = {BELIEF_STATE: 'attributes', SYSTEM: 'utterance', HUMAN: 'utterance'}
-EXTENDED_VALUES_TURN = [HUMAN, BELIEF_STATE, SYSTEM, REPLAYED, BELIEF_STATE_REPLAY]
-EXTENDED_VALUES_TURN = dict([(k, k.replace('_', ' ').capitalize()) for k in EXTENDED_VALUES_TURN])
+EXTENDED_VALUES_TURN = [HUMAN, SYSTEM, BELIEF_STATE, REPLAYED, BELIEF_STATE_REPLAY]
+EXTENDED_VALUES_TURN = OrderedDict([(k, k.replace('_', ' ').capitalize()) for k in EXTENDED_VALUES_TURN])
 
 
 def normalize_path(path):
@@ -98,20 +98,20 @@ def _stream_template(template_name, **context):
 
 def turnify_conversation(msgs):
     previous, last = 'Previous', 'Last'
-    flat = FLAT_EMPTY_TURN.copy()
-    turns = []
+    turns, flat = [], OrderedDict(FLAT_EMPTY_TURN)
     for m in msgs:
         if 'name' not in m and 'user' in m:
             m['name'] = m['user']  # TODO HACK FOR BACKWARD COMPATIBILITY
         assert 'name' in m, 'Broken msg: %s' % m
         previous, last = last, m['name']
-        assert last in FLAT_EMPTY_TURN, 'last %s not in FLAT_EMPTY_TURN %s' % (last, FLAT_EMPTY_TURN)
-        if previous == last:
-            turns.append(flat)
-            flat = FLAT_EMPTY_TURN.copy()
         flat[last] = str(m[PICK_VALUES_TURN[last]])  # extract content based on the type from the wrapper message
+        assert last in FLAT_EMPTY_TURN, 'last %s not in FLAT_EMPTY_TURN %s' % (last, FLAT_EMPTY_TURN)
+        if previous == last or all([v is not None for v in flat.values()]):
+            turns.append(flat)
+            flat = OrderedDict(FLAT_EMPTY_TURN)
+        print 'DEBUG ONDRA\n', m, '\n', len(turns)
 
-    if last != 'Last' and previous != last:
+    if last != 'Last' and not (previous == last or all([v is not None for v in flat.values()])):
         turns.append(flat)
     return turns
 
@@ -166,7 +166,7 @@ def _gen_data(cbc, recorded_ms, replay_listener, timeout=0.1):
                                 yield d_next
                             else:
                                 # If the recorded HUMAN/SYSTEM answers followed regularly
-                                new_d = FLAT_EMPTY_TURN.copy()
+                                new_d = OrderedDict(FLAT_EMPTY_TURN)
                                 new_d[BELIEF_STATE_REPLAY], new_d[REPLAYED] = b, a
                                 yield new_d
             except Empty:
