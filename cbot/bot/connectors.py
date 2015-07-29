@@ -5,7 +5,7 @@ from greenlet import GreenletExit
 import multiprocessing
 import time
 import logging
-from cbot.bot.alias import BELIEF_STATE_PREFIX
+from cbot.bot.alias import BELIEF_STATE, SYSTEM, HUMAN
 import cbot.bot.log as cblog
 import uuid
 
@@ -30,7 +30,8 @@ class ChatBot(object):
         self.logger = logging.getLogger(str(self.name))
         name = '%s_%s' % (time.time(), self.name)
         self.logger.addHandler(cblog.create_local_logging_handler(name, suffix='dm_logic', log_level=logging.INFO))
-        self.logger.addHandler(cblog.create_local_logging_handler(name, suffix='input_output', log_level=logging.WARNING))
+        self.logger.addHandler(
+            cblog.create_local_logging_handler(name, suffix='input_output', log_level=logging.WARNING))
 
         self.kb = kb.KnowledgeBase()
         self.kb.load_default_models()
@@ -40,12 +41,22 @@ class ChatBot(object):
         self.policy = RuleBasedPolicy(self.kb, SimpleTurnState(dat_trans_prob))
 
     def receive_msg(self, msg):
-        assert msg is not None
+        # TODO use gevent.AsyncResult to make it asynchronous
+        assert msg is not None and 'utterance' in msg and 'name' in msg, 'Broken msg: %s' % msg
+        self.logger.warning('%s', jsonapi.dumps(msg))
+
         self.policy.update_state(Utterance(msg['utterance']))
         response = self.policy.act()
-        self.logger.info("%s%s" % (BELIEF_STATE_PREFIX, self.policy.state))
-        self.send_reply(response)
+        self.logger.info(self.policy.state)
 
+        # TODO REMOVE DUPLICATE name and user
+        m = {'utterance': response,
+             'time': time.time(),
+             'user': SYSTEM,
+             'name': SYSTEM,
+             'session': self.name, }
+        self.send_reply(m)
+        self.logger.warning('%s', jsonapi.dumps(m))
 
 
 def forwarder_device_start(frontend_port, backend_port, logger=None):
@@ -63,7 +74,6 @@ def forwarder_device_start(frontend_port, backend_port, logger=None):
 
 
 class ChatBotConnector(Greenlet):
-
     def __init__(self, response_cb, bot_front_port, bot_back_port,
                  user_front_port, user_back_port, ctx=None):
         super(ChatBotConnector, self).__init__()
@@ -126,7 +136,7 @@ class ChatBotConnector(Greenlet):
         msg['user'] = 'human'
         msg['time'] = time.time()
         msg['session'] = self.name
-        self.logger.debug('ChatBotConnector %s', msg)
+        self.logger.debug('send(): %s', msg)
         self.pub2bot.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
 
     def _run(self):
@@ -134,12 +144,12 @@ class ChatBotConnector(Greenlet):
         try:
             while self.should_run():
                 assert self.initialized.get()
-                self.logger.debug('ChatBotConnector before poll')
+                self.logger.debug('before poll')
                 socks = dict(self.poller.poll())
-                self.logger.debug('ChatBotConnector after poll')
+                self.logger.debug('after poll')
                 if self.sub2bot in socks and socks[self.sub2bot] == zmq.POLLIN:
                     _, msg = cblog.topic_msg_to_json(self.sub2bot.recv())
-                    self.logger.debug('ChatBotConnector %s received bot msg %s', self.name, msg)
+                    self.logger.debug('_run(): %s', self.name, msg)
                     self.response(msg, self.name)
         except Exception as e:
             self.logger.exception(e)
@@ -180,11 +190,12 @@ class ChatBotProcess(multiprocessing.Process):
         # Normal conversation
         if self.isocket in socks and socks[self.isocket] == zmq.POLLIN:
             _, msg = cblog.topic_msg_to_json(self.isocket.recv())
-            self.logger.warning('%s', jsonapi.dumps(msg))
             # hack - control signal from user
             if msg['utterance'].lower() == 'your id' or msg['utterance'].lower() == 'your id, please!':
-                self.send_msg(self.name)
+                self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(cblog.wrap_msg(self.name))))
             else:
+                if 'name' not in msg and 'user' in msg:
+                    msg['name'] = msg['user']  # TODO HACK for backward compatibility
                 chatbot.receive_msg(msg)  # Normal conversation
         # Control signals
         if self.die_signal in socks and socks[self.die_signal] == zmq.POLLIN:
@@ -201,17 +212,8 @@ class ChatBotProcess(multiprocessing.Process):
             stats = {'time': time.time(), 'history_len': len(self.policy.state.history)}
             self.osocket.send_string('stat_%s %s' % (self.name, jsonapi.dumps(stats)))
 
-    def send_msg(self, utt):
-        if utt is None:
-            return
-        m = {
-            'utterance': utt,
-            'time': time.time(),
-            'user': self.__class__.__name__,
-            'session': self.name,
-        }
-        self.logger.warning('%s', jsonapi.dumps(m))
-        self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(m)))
+    def send_msg(self, msg):
+        self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
 
     def zmq_init(self):
         self.context = zmq.Context()
@@ -250,15 +252,18 @@ class ChatBotProcess(multiprocessing.Process):
 if __name__ == '__main__':
     print("""ChatBot demo without zmq and multiprocessing.""")
 
+
     def send_msg(x):
         print('Bot > %s\n' % x)
 
+
     def get_msg():
         utt = raw_input("\nYou > ")
-        return {'time': time.time(), 'user': 'human', 'utterance': utt}
+        return {'time': time.time(), 'name': HUMAN, 'utterance': utt}
+
 
     cb = ChatBot("Command line bot", send_msg)
-    msg = {'utterance': None}
+    msg = {'utterance': None, 'name': None, 'time': None}
 
     while msg['utterance'] != 'end':
         msg = get_msg()

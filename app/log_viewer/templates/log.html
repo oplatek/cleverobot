@@ -5,23 +5,19 @@
 {% block content %}
 
 <div id="data">
-    <span class="user">User</span>
-    <span class="original_system">Original system</span>
-    <span class="current_system">Current system</span>
-    <span class="belief_state">Belief state</span>
+    {% for k, v in headers.iteritems() %}
+    <span class="{{ k }}">{{ v }}</span>
+    {% endfor %}
+
     <ul id="messages">
     </ul>
 
-    {% for user_input, original_system, current_system, belief_state in data: %}
+    {% for row in data: %}
     <script>
         var $messages = $('#messages');
-        $messages.append($('<li class="user">').text({{ user_input|tojson|safe }}));
-        $messages.append($('<li class="original_system">').text({{ original_system|tojson|safe }}));
-        $messages.append($('<li class="current_system">').text({{ current_system|tojson|safe }}));
-        var bs = {{ belief_state|tojson|safe }};
-        if (bs != "null") {
-            $messages.append($('<li class="belief_state">').text())
-        }
+        {% for key, value in row.iteritems() %}
+        $messages.append($('<li class="{{ key }}">').text({{ value|tojson|safe }}));
+        {% endfor %}
     </script>
     {% endfor %}
 </div>

@@ -4,6 +4,7 @@ import unittest
 import datetime
 import app.cleverobot.run as run
 import time
+from cbot.bot.alias import HUMAN
 
 
 class RoutingTestCase(unittest.TestCase):
@@ -20,24 +21,27 @@ class RoutingTestCase(unittest.TestCase):
         self.assertIn('<title>Clever robot</title>', rs.data)
 
 
-@unittest.skip("TODO")
+@unittest.skip("TODO handshake unsuccessful")
 class TestSocketIO(unittest.TestCase):
 
     def setUp(self):
         self.client = run.socketio.test_client(run.app)
+        port_offset = len(__file__)  # TODO hack randomize ports
         self.log_process, self.forwarder_process_bot, self.forwarder_process_user = run.start_zmq_and_log_processes(
-            run.ctx, run.bot_input, run.bot_output, run.user_input, run.user_output)
+            run.ctx, run.bot_input + port_offset, run.bot_output + port_offset,
+            run.user_input + port_offset, run.user_output + port_offset)
 
     def tearDown(self):
         self.client.disconnect()
-        del self.client
         run.shut_down(self.forwarder_process_bot, self.forwarder_process_user, self.log_process)
+        del self.client
 
+    @unittest.expectedFailure
     def test_connect(self):
         self.client.emit('begin', {'setup': 'unused'})
         time.sleep(0.2)
-        self.client.emit('utterance', {'time_sent': str(datetime.datetime.now()), 'user': 'human', 'utterance': 'Hi'})
-        self.client.emit('end', {'time_sent': str(datetime.datetime.now()), 'user': 'human', 'utterance': 'Hi'})
+        self.client.emit('utterance', {'time_sent': str(datetime.datetime.now()), 'name': HUMAN, 'utterance': 'Hi'})
+        self.client.emit('end', {'time_sent': str(datetime.datetime.now()), 'name': HUMAN, 'utterance': 'Hi'})
         received = self.client.get_received()
         print received
 

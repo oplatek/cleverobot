@@ -8,8 +8,12 @@
     background-color: #F1F1F1;
 }
 
-.original_system {
+.chat_bot {
     background-color: #FAEBD7;
+}
+
+.replayed {
+    background-color: #EABBA7
 }
 
 .current_system {
@@ -18,6 +22,11 @@
 
 .belief_state {
     background-color: #88CCFF;
+    font-size: 80%;
+}
+
+.belief_state_replayed {
+    background-color: #88BBDD;
     font-size: 80%;
 }
 

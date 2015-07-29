@@ -4,6 +4,7 @@ from __future__ import division, unicode_literals
 from collections import OrderedDict
 import json
 import operator
+from cbot.bot.alias import BELIEF_STATE
 from cbot.bot.log import ChatBotJsonEncoder
 from cbot.dm.actions import BaseAction, Reject, Hello, Deny, NoOp
 from cbot.lu.pos import PerceptronTagger, POSR
@@ -82,6 +83,7 @@ class SimpleTurnState(object):
     def __repr__(self):
         bsd = {'name': self.__class__.__name__,
                'debug_info': super(SimpleTurnState, self).__repr__(),
+               'name': BELIEF_STATE,
                'attributes': dict([(str(att), self.__getattribute__(att)) for att in self._backup_attributes]),
                }
         return ChatBotJsonEncoder().encode(bsd)

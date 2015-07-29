@@ -7,7 +7,7 @@ from zmq.log.handlers import PUBHandler
 from zmq.utils import jsonapi
 import logging
 import zmq
-from cbot.bot.alias import LOGGING_ADDRESS
+from cbot.bot.alias import LOGGING_ADDRESS, HUMAN
 from cbot.dm.actions import BaseAction
 
 
@@ -37,8 +37,8 @@ class ChatBotJsonEncoder(json.JSONEncoder):
         return super(self.__class__, self).encode(flat_obj)
 
 
-def wrap_msg(utt):
-    return {'time': time.time(), 'user': 'human', 'utterance': utt}
+def wrap_msg(utt, user=HUMAN):
+    return {'time': time.time(), 'name': user, 'user': user, 'utterance': utt}
 
 
 def topic_msg_to_json(topic_msg):

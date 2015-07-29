@@ -7,6 +7,7 @@ import logging
 import time
 import random
 import gevent
+from cbot.bot.alias import HUMAN
 from cbot.bot.connectors import ChatBotProcess, ChatBotConnector, forwarder_device_start, ChatBot
 from cbot.bot.log import connect_logger, wrap_msg, log_loop
 import datetime
@@ -96,7 +97,7 @@ class ChatBotOneAnswerTest(unittest.TestCase):
         self.cb = ChatBot(self.__class__.__name__, send)
 
         def receive_msg():
-            return {'time': time.time(), 'user': 'human', 'utterance': self.input}
+            return {'time': time.time(), 'name': HUMAN, 'utterance': self.input}
 
         self.receive_msg = receive_msg
         log.debug('Test started at %s with timeout %s' % (self.test_start, self.timeout))

@@ -1,0 +1,4 @@
+{"name":"human","time_sent":1438160318807,"session":"327585400996347922803433657917879389552","user":"human","time":1438160318.830565,"utterance":"Hello"}
+{"session":"327585400996347922803433657917879389552","utterance":"Hi!","user":"chat_bot","name":"chat_bot","time":1438160318.840093}
+{"name":"human","time_sent":1438160328565,"session":"327585400996347922803433657917879389552","user":"human","time":1438160328.567131,"utterance":"I know Little Richard"}
+{"session":"327585400996347922803433657917879389552","utterance":"What know Richard?","user":"chat_bot","name":"chat_bot","time":1438160328.573401}

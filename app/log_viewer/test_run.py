@@ -29,10 +29,12 @@ class ReplayingLogTestCase(unittest.TestCase):
     def setUp(self):
         log_root = os.path.realpath(os.path.join(os.path.dirname(__file__), 'test_logs'))
         run.root = log_root
+        port_offset = 0  # len(__file__)  # TODO hack randomize ports TODO works only 0 probably bug
         run.app.config['TESTING'] = True
         self.client = run.app.test_client()
         self.log_process, self.forwarder_process_bot, self.forwarder_process_user = \
-            start_zmq_and_log_processes(run.ctx, run.bot_input, run.bot_output, run.user_input, run.user_output)
+            start_zmq_and_log_processes(run.ctx, run.bot_input + port_offset, run.bot_output + port_offset,
+                                        run.user_input + port_offset, run.user_output + port_offset)
 
     def tearDown(self):
         self.client.delete()
