@@ -113,6 +113,8 @@ def turnify_conversation(msgs):
     not_none = [v is not None for v in flat.values()]
     if last != 'Last' and previous != last and not all(not_none) and any(not_none):
         turns.append(flat)
+    app.logger.debug(
+        'Created %d turns from %d msgs: %.2f msg per turn (expected 3)' % (len(turns), len(msgs), len(msgs) / len(turns)))
     return turns
 
 
@@ -132,9 +134,8 @@ def _store_to_queue(msg, chatbot_id):
 
 
 def _get_answers_and_states(sub_sock, timeout):
-    raw_answers = [wrap_msg('ahoj'), wrap_msg('jak')]
-    raw_belief_states = [{'name': BELIEF_STATE, 'attributes': "TODO dummy state1"},
-                         {'name': BELIEF_STATE, 'attributes': "TODO dummy state2"}]
+    raw_answers = [wrap_msg('ahoj'), wrap_msg('ahoj2')]
+    raw_belief_states = [{'name': BELIEF_STATE, 'attributes': "state1"}, {'name': BELIEF_STATE, 'attributes': "state2"}]
     # TODO asserts about names SYSTEM and BELIEF_STATE
     answers = [m['utterance'] for m in raw_answers]
     belief_states = [bs['attributes'] for bs in raw_belief_states]
@@ -144,25 +145,28 @@ def _get_answers_and_states(sub_sock, timeout):
 def _gen_data(cbc, recorded_ms, replay_listener, timeout=0.1):
     recorded_turns = turnify_conversation(recorded_ms)
     i = 0
+    print 'ONDRA DEBUG-1 ', len(recorded_turns)
     while i < len(recorded_turns):
-        i_next = i + 1
+        print 'ONDRA DEBUG0: \n%s\n' % recorded_turns[i]
         if recorded_turns[i][HUMAN] is not None:
             d = recorded_turns[i]
             app.logger.debug('Sending msg to replay bot %s' % d[HUMAN])
-            cbc.send(wrap_msg(d))
+            cbc.send(wrap_msg(d[HUMAN]))
             try:
                 anws, bss = _get_answers_and_states(replay_listener, timeout)
                 for j, (a, b) in enumerate(izip_longest(anws, bss)):
+                    print 'ONDRA DEBUG generated answers: ', j, i, '\n', a, b
                     if j == 0:
                         d[REPLAYED], d[BELIEF_STATE_REPLAY] = a, b
+                        i += 1
                         yield d
                     else:  # j >= 1
-                        i_next += 1
                         # More answer for one input
-                        if i_next < len(recorded_turns) and  recorded_turns[i_next][HUMAN] is None:
+                        if i < len(recorded_turns) and recorded_turns[i][HUMAN] is None:
                             # If the recorded answers had more answers too
-                            recorded_turns[i_next][REPLAYED], recorded_turns[i_next][BELIEF_STATE_REPLAY] = a, b
-                            yield recorded_turns[i_next]
+                            recorded_turns[i][REPLAYED], recorded_turns[i][BELIEF_STATE_REPLAY] = a, b
+                            yield recorded_turns[i]
+                            i += 1
                         else:
                             new_d = FLAT_EMPTY_TURN.copy()
                             new_d[REPLAYED], new_d[BELIEF_STATE_REPLAY] = a, b
@@ -170,8 +174,10 @@ def _gen_data(cbc, recorded_ms, replay_listener, timeout=0.1):
             except Empty:
                 app.logger.debug('System not responded to "%s"' % d[HUMAN])
         else:
+            i += 1
             yield d
-        i = i_next
+        print 'ONDRA DEBUG end of while loop', i
+    print 'ONDRA DEBUG3 while loop finished', i
     cbc.kill()
 
 
