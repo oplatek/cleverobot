@@ -145,7 +145,7 @@ def _get_answers_and_states(sub_sock, poller, timeout):
     while (datetime.now() - start).total_seconds() < timeout:
         app.logger.debug('seconds remaining till timeout %f', (datetime.now() - start).total_seconds())
         remaining = (datetime.now() - start).total_seconds() - timeout
-        socks = dict(poller.poll(timeout=remaining))
+        socks = dict(poller.poll(timeout=0.1))
         app.logger.debug('after poll')
         if sub_sock in socks and socks[sub_sock] == zmqg.POLLIN:
             _, msg = topic_msg_to_json(sub_sock.recv())
@@ -162,21 +162,20 @@ def _get_answers_and_states(sub_sock, poller, timeout):
     return answers, belief_states
 
 
-def _gen_data(cbc, recorded_ms, replay_listener, poller, timeout=2.1):
+def _gen_data(cbc, recorded_ms, replay_listener, poller, timeout=0.1):
     recorded_turns = turnify_conversation(recorded_ms)
     i = 0
     while i < len(recorded_turns):
         if recorded_turns[i][HUMAN] is not None:
-            d = recorded_turns[i]
-            app.logger.debug('Sending msg to replay bot %s' % d[HUMAN])
-            cbc.send(wrap_msg(d[HUMAN]))
+            app.logger.debug('%d: Sending msg to replay bot %s' % (i, recorded_turns[i][HUMAN]))
+            cbc.send(wrap_msg(recorded_turns[i][HUMAN]))
             try:
                 anws, bss = _get_answers_and_states(replay_listener, poller, timeout)
                 for j, (a, b) in enumerate(izip_longest(anws, bss)):
                     if j == 0:
-                        d[REPLAYED], d[BELIEF_STATE_REPLAY] = a, b
                         i += 1
-                        yield d
+                        recorded_turns[i][REPLAYED], recorded_turns[i][BELIEF_STATE_REPLAY] = a, b
+                        yield recorded_turns[i]
                     else:  # j >= 1
                         # More answer for one input
                         if i < len(recorded_turns) and recorded_turns[i][HUMAN] is None:
@@ -185,14 +184,17 @@ def _gen_data(cbc, recorded_ms, replay_listener, poller, timeout=2.1):
                             yield recorded_turns[i]
                             i += 1
                         else:
-                            new_d = FLAT_EMPTY_TURN.copy()
-                            new_d[REPLAYED], new_d[BELIEF_STATE_REPLAY] = a, b
-                            yield new_d
+                            new_turn = FLAT_EMPTY_TURN.copy()
+                            new_turn[REPLAYED], new_turn[BELIEF_STATE_REPLAY] = a, b
+                            yield new_turn
+                else:
+                    i += 1
             except Empty:
-                app.logger.warning('System not responded to "%s"' % d[HUMAN])
+                i += 1
+                app.logger.warning('System not responded to "%s"' % recorded_turns[i][HUMAN])
         else:
+            yield recorded_turns[i]
             i += 1
-            yield d
     cbc.kill()
 
 
