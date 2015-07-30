@@ -1,14 +1,18 @@
 from __future__ import unicode_literals, division
 import json
+from logging.handlers import TimedRotatingFileHandler
 import time
 import os
 import errno
 from zmq.log.handlers import PUBHandler
 from zmq.utils import jsonapi
 import logging
+from logging.config import dictConfig
 import zmq
-from cbot.bot.alias import LOGGING_ADDRESS, HUMAN
+from cbot.bot.alias import LOGGING_ADDRESS, HUMAN, BASIC_JSON_MSG_SCHEMA, CHATBOT_MSG_LOGGER
 from cbot.dm.actions import BaseAction
+import jsonschema
+from jsonschema.exceptions import ValidationError
 
 
 class ChatBotJsonEncoder(json.JSONEncoder):
@@ -37,6 +41,15 @@ class ChatBotJsonEncoder(json.JSONEncoder):
         return super(self.__class__, self).encode(flat_obj)
 
 
+def setup_logging(config_path, default_level=logging.INFO):
+    if os.path.exists(config_path):
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            dictConfig(config)
+    else:
+        logging.basicConfig(level=default_level)
+
+
 def wrap_msg(utt, user=HUMAN):
     return {'time': time.time(), 'name': user, 'user': user, 'utterance': utt}
 
@@ -48,66 +61,100 @@ def topic_msg_to_json(topic_msg):
     return topic, msg
 
 
-def create_local_logging_handler(name, log_level=logging.WARNING, suffix="input_output"):
-    dir_name = os.path.dirname(os.path.abspath(__file__))
-    logger = logging.getLogger(__name__)
-    log_dir = os.path.join(dir_name, 'logs')
-    try:
-        os.mkdir(log_dir)
-    except OSError, e:
-        if e.errno != errno.EEXIST:
-            raise
-    logger.setLevel(logging.DEBUG)
-    h = logging.FileHandler(os.path.join(log_dir, '%s_%s.log' % (name, suffix)), mode='w', delay=True)
-    h.setLevel(log_level)
-    return h
-
-
-def log_from_subscriber(sub):
-    """
-    :param sub:socket(zmq.SUB)
-    :return:(str, str) logging.LEVEL, log message
-    """
+def log_from_subscriber(sub, logger):
     level, msg = sub.recv_multipart()
-    if msg.endswith('\n'):
-        msg = msg[:-1]
-    level = level.lower()
-    logf = getattr(logging, level)
-    logf(msg)
+    level, msg = level.lower(), msg.strip()
+    try:
+        jsonschema.validate(msg, BASIC_JSON_MSG_SCHEMA)
+        d = json.loads(msg)
+
+        adapter = SessionAdapter(logging.getLogger(__name__), d)
+        log_adapter = getattr(adapter, level)
+        log_adapter(msg)
+
+        logger_sess_handler = getattr(logger, level)
+        logger_sess_handler(msg)
+
+    except (ValidationError, ValueError) as e:
+        logging.critical('level: %s; msg: %s', level, str(msg))
+        logging.exception(e)
+        print msg
+        raise e
 
 
-def log_loop(level=logging.DEBUG, address=LOGGING_ADDRESS, log_form='%(asctime)s %(message)s',log_name='common.log'):
-    import zmq
+class SessionAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        return '[%s %s]\n%s' % (self.extra['session'], self.extra['name'], msg), kwargs
+
+
+class SessionHandler(logging.Handler):
+    def __init__(self, dir_name=os.path.dirname(os.path.abspath(__file__))):
+        super(self.__class__, self).__init__()
+        self.log_dir = os.path.join(dir_name, 'logs')
+        try:
+            os.mkdir(self.log_dir)
+        except OSError, e:
+            if e.errno != errno.EEXIST:
+                raise
+
+    def emit(self, record):
+        try:
+            msg = json.loads(record.msg)
+            if getattr(logging, record.levelname) == logging.INFO:
+                log_file = msg['session'] + 'dm_logic.log'
+            elif getattr(logging, record.levelname) == logging.WARNING:
+                log_file = msg['session'] + 'input_output.log'
+            else:
+                raise ValueError("Unsupported logging level for ChatBot msgs!")
+            with open(os.path.join(self.log_dir, log_file), 'a') as w:
+                w.write(record.msg + '\n')
+                w.flush()
+        except Exception as e:
+            logging.exception(e)
+
+
+def chatbot2file_log_loop(address=LOGGING_ADDRESS, log_name='all_messages_cbot_msg.log'):
+    logger = logging.getLogger(__name__ + '.' + CHATBOT_MSG_LOGGER)
     ctx = zmq.Context()
     sub = ctx.socket(zmq.SUB)
     sub.bind(address)
     sub.setsockopt_string(zmq.SUBSCRIBE, '')
 
-    # TODO refactor all related logging functions to logging module
-    logging.basicConfig(level=level, format=log_form, filename=log_name)  # TODO rotating handler
-    console = logging.StreamHandler()
-    console.setLevel(logging.DEBUG)
-    console.setFormatter(logging.Formatter(log_form))
-    logging.getLogger('').addHandler(console)
+    fh = TimedRotatingFileHandler(log_name, when='W0', interval=1)
+    logger.addHandler(fh)
+    logger.addHandler(SessionHandler())
+    logger.setLevel(logging.DEBUG)
 
     while True:
-        log_from_subscriber(sub)
+        log_from_subscriber(sub, logger)
 
 
-def connect_logger(logger, context, address=LOGGING_ADDRESS):
-    """
-    Create logger for zmq.context() which need to taken from process of intended use.
-    :return: logging.Logger
-    """
+class ChatBotPUBHandler(PUBHandler):
+    def __init__(self, publish_socket, session):
+        super(self.__class__, self).__init__(publish_socket)
+        self.session = session
+
+    def emit(self, record):
+        jsonschema.validate(record.msg, BASIC_JSON_MSG_SCHEMA)
+        msg = json.loads(record.msg)
+        if 'session' not in msg:
+            msg['session'] = self.session
+        record.msg = json.dumps(msg, sort_keys=True, indent=4, separators=(',', ': '))
+        super(self.__class__, self).emit(record)
+
+
+def connect_logger(logger_name, session_name, context, address=LOGGING_ADDRESS):
+    logger = logging.getLogger(logger_name)
     pub = context.socket(zmq.PUB)
     pub.connect(address)
-    handler = PUBHandler(pub)
+    handler = ChatBotPUBHandler(pub, session_name)
     f = logging.Formatter("%(levelname)s %(filename)s:%(lineno)d %(funcName)s:\n\t%(message)s\n")
     # FIXME hack -> rewrite nicely
     PUBHandler.formatters[logging.DEBUG] = f
-    PUBHandler.formatters[logging.WARNING] = f
-    PUBHandler.formatters[logging.INFO] = f
+
+    # special logic for ChatBot TODO define my own logging levels
+    PUBHandler.formatters[logging.WARNING] = logging.Formatter('%(message)s\n')
+    PUBHandler.formatters[logging.INFO] = logging.Formatter('%(message)s\n')
     logger.addHandler(handler)
 
-    # Let the logs be filter at the listener.
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.DEBUG)  # filtering will be done at the listener side

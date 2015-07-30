@@ -8,7 +8,6 @@ from collections import defaultdict
 import random
 from cbot.lu import evaluate
 from cbot.lu.perceptron import Perceptron
-from cbot.lu.pos import DefaultList
 from dependencygraph import DependencyGraph, Node
 import logging
 
@@ -46,6 +45,7 @@ class Parser(object):
             self.model.load(path.join(model_dir, 'parser.pickle'))
         self.tagger = tagger
         self.confusion_matrix = defaultdict(lambda: defaultdict(int))
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
     def save(self):
         self.model.save(path.join(os.path.dirname(__file__), 'parser.pickle'))
@@ -92,8 +92,8 @@ class Parser(object):
             for gold_graph in dep_graphs:
                 corr_s, corrL_s, total_s = self.train_one(itn, gold_graph)
                 corr, corrL, total = corr + corr_s, corrL + corrL_s, total + total_s
-            logging.debug('It %d: %.3f UAS, %.3f LAS', itn, (corr / total), (corrL / total))
-        logging.debug('Averaging weights')
+            self.logger.debug('It %d: %.3f UAS, %.3f LAS', itn, (corr / total), (corrL / total))
+        self.logger.debug('Averaging weights')
         self.model.average_weights()
 
 

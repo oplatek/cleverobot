@@ -4,3 +4,4 @@ numpy
 # scipy installed via apt-get on Ubuntu
 nose
 simplejson
+jsonschema

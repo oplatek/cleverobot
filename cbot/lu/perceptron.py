@@ -67,7 +67,7 @@ class Perceptron(object):
             self.weights[feat] = new_feat_weights
 
     def save(self, path):
-        log = logging.getLogger(self.__class__.__name__)
+        log = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         log.info("Saving model to %s" % path)
         pickle.dump(self.weights, open(path, 'w'))
 

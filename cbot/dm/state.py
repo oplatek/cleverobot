@@ -2,7 +2,6 @@
 # encoding: utf-8
 from __future__ import division, unicode_literals
 from collections import OrderedDict
-import json
 import operator
 from cbot.bot.alias import BELIEF_STATE
 from cbot.bot.log import ChatBotJsonEncoder

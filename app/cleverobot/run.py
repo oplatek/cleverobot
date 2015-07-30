@@ -2,12 +2,14 @@
 # encoding: utf-8
 from __future__ import unicode_literals
 import logging
+import os
 import time
-from flask import Flask, render_template, current_app, request, jsonify
+from flask import Flask, render_template, request, jsonify
 import flask.ext.socketio as fsocketio
 import argparse
+import cbot
 from cbot.bot.connectors import ChatBotConnector, forwarder_device_start
-from cbot.bot.log import log_loop, connect_logger, topic_msg_to_json
+from cbot.bot.log import chatbot2file_log_loop, topic_msg_to_json, setup_logging
 import cbot.bot_exceptions as botex
 from multiprocessing import Process
 import zmq.green as zmqg
@@ -23,15 +25,16 @@ user_input, user_output = 8888, 9999
 host, port = '0.0.0.0', 3000
 ctx = zmqg.Context()
 pub2bot = ctx.socket(zmq.PUB)
+log_config = os.path.realpath(os.path.join(os.path.dirname(cbot.__file__), 'logging.json'))
 
 @app.before_request
 def log_request():
-    current_app.logger.debug('Request: %s %s', request.method, request.url)
+    app.logger.debug('Request: %s %s', request.method, request.url)
 
 
 @app.after_request
 def log_response(res):
-    current_app.logger.debug('Response: %s', res.status_code)
+    app.logger.debug('Response: %s', res.status_code)
     return res
 
 
@@ -45,7 +48,7 @@ def index():
 @app.route('/stats/<chatbot_id>')
 def request_stats(chatbot_id):
     context = zmqg.Context()
-    current_app.logger.debug('sent stats req to %s' % chatbot_id)
+    app.logger.debug('sent stats req to %s' % chatbot_id)
     async_stat_sub = context.socket(zmq.SUB)
     async_stat_sub.setsockopt_string(zmq.SUBSCRIBE, 'stat_%s' % chatbot_id)
     async_stat_sub.connect('tcp://127.0.0.1:%d' % user_output)
@@ -150,21 +153,18 @@ def shut_down(forwarder_process_bot, forwarder_process_user, log_process):
         log_process.terminate()
 
 
-def start_zmq_and_log_processes(ctx, bot_in, bot_out, user_in, user_out):
+def start_zmq_and_log_processes(bot_in, bot_out, user_in, user_out):
     log_process, forwarder_process_bot, forwarder_process_user = None, None, None
     try:
-        log_process = Process(target=log_loop, kwargs={'log_name': log_name})
+        log_process = Process(target=chatbot2file_log_loop, kwargs={'log_name': log_name})
         log_process.start()
 
-        connect_logger(app.logger, ctx)
-        werkzeug_logger = logging.getLogger('werkzeug')
-        connect_logger(werkzeug_logger, ctx)
-
-        forwarder_process_bot = forwarder_device_start(bot_in, bot_out, app.logger)
-        forwarder_process_user = forwarder_device_start(user_in, user_out, app.logger)
+        forwarder_process_bot = forwarder_device_start(bot_in, bot_out)
+        forwarder_process_user = forwarder_device_start(user_in, user_out)
 
         pub2bot.connect('tcp://127.0.0.1:%d' % bot_input)
     except Exception as e:
+        shut_down(forwarder_process_bot, forwarder_process_user, log_process)
         app.logger.error("Exception during setup processes %s" % str(e), exc_info=True)
         raise e
     return log_process, forwarder_process_bot, forwarder_process_user
@@ -182,13 +182,15 @@ if __name__ == '__main__':
     parser.add_argument('--bot-output', type=int, default=bot_output)
     parser.add_argument('--user-input', type=int, default=user_input)
     parser.add_argument('--user-output', type=int, default=user_output)
+    parser.add_argument('--log-config', default=log_config)
     args = parser.parse_args()
 
     bot_input, bot_output = args.bot_input, args.bot_output
     user_input, user_output = args.user_input, args.user_output
-    host, port, log_name = args.host, args.port, args.log
+    host, port, log_name, log_config = args.host, args.port, args.log, args.log_config
 
-    log_process, forwarder_process_bot, forwarder_process_user = start_zmq_and_log_processes(ctx, bot_input, bot_output, user_input, user_output)
+    setup_logging(log_config)
+    log_process, forwarder_process_bot, forwarder_process_user = start_zmq_and_log_processes(bot_input, bot_output, user_input, user_output)
     try:
         socketio.run(app, host=host, port=port, use_reloader=False,)
     except Exception as e:

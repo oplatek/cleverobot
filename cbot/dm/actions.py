@@ -441,7 +441,6 @@ class GoodBye(BaseAction):
 #
 # @staticmethod
 #     def get_image_urls(search_term):
-#         log = logging.importLogger('get_image_urls')
 #         assert isinstance(search_term, tuple) and len(search_term) == 3
 #         search_term = ' '.join([t for t in search_term if t is not None]).replace(' ', '%20')
 #         url = "https://ajax.googleapis.com/ajax/services/search/images?v=1.0&q=%s&start=0&userip=MyIP" % search_term

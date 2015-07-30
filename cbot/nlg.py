@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 from __future__ import unicode_literals
-import cbot.bot
+import logging
 
 
 class Nlg(object):
@@ -17,8 +17,8 @@ class Nlg(object):
             'silence': cls._default_nlg_acton,
         }
 
-    def __init__(self, logger):
-        self.logger = logger
+    def __init__(self):
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.nlgf = Nlg.get_default_actions()
         self.nlgf.update({
             'raw': lambda action: action['raw'],
@@ -39,7 +39,6 @@ class Nlg(object):
 
     def open_questions(self, action):
         about = action['about']
-        question = None
         assert isinstance(about, tuple) and len(about) == 3, 'we model triplets only'
         if about[0] is not None and about[1] is None and about[2] is None:
             question = 'Can you tell me more about %s ?' % about[0]

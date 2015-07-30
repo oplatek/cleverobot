@@ -7,21 +7,23 @@ from itertools import izip_longest
 import json
 import logging
 import os
+from datetime import datetime
 from zmq.utils import jsonapi
 from app.cleverobot.run import start_zmq_and_log_processes, shut_down
 import zmq.green as zmqg
-from flask import Flask, render_template, current_app, request, Response, stream_with_context
+from flask import Flask, render_template, request, Response, stream_with_context
 import functools
+import cbot
 from cbot.bot.connectors import ChatBotConnector
-from cbot.bot.log import wrap_msg
-from cbot.bot.alias import HUMAN, BELIEF_STATE, SYSTEM, REPLAYED, BELIEF_STATE_REPLAY
+from cbot.bot.log import wrap_msg, topic_msg_to_json, setup_logging
+from cbot.bot.alias import HUMAN, BELIEF_STATE, SYSTEM, REPLAYED, BELIEF_STATE_REPLAY, LOGGING_ADDRESS
 from gevent.queue import Queue, Empty
 
 app = Flask(__name__)
 app.secret_key = 12345  # TODO
 root = os.path.realpath(os.path.join(os.path.dirname(__file__), '../../cbot/bot/logs'))
 log_name = 'logs.cleverobot.log'
-log_config = os.path.realpath(os.path.join(os.path.dirname(__file__), 'log_viewer_logging_config.json'))
+log_config = os.path.realpath(os.path.join(os.path.dirname(cbot.__file__), 'logging.json'))
 bot_input, bot_output = 6665, 7776
 user_input, user_output = 8887, 9998
 host, port = '0.0.0.0', 4000
@@ -51,7 +53,7 @@ def with_path(f):
                 rp = request.args.get('path')
             werkzeug_logger.info("Requested path %s\n" % rp)
             np = normalize_path(rp)
-            werkzeug_logger.info("Normalized path %s\n" % np)
+            werkzeug_logger.debug("Normalized path %s\n" % np)
             request.normalized_path = np
         except Exception as e:
             werkzeug_logger.exception(e)
@@ -62,12 +64,12 @@ def with_path(f):
 
 @app.before_request
 def log_request():
-    current_app.logger.debug('Request: %s %s', request.method, request.url)
+    app.logger.debug('Request: %s %s', request.method, request.url)
 
 
 @app.after_request
 def log_response(res):
-    current_app.logger.debug('Response: %s', res.status_code)
+    app.logger.debug('Response: %s', res.status_code)
     return res
 
 
@@ -129,33 +131,48 @@ def _read_conversation(abs_path):
     return msgs
 
 
-def _store_to_queue(msg, chatbot_id):
-    app.logger.debug('Received answer %s from %s' % (msg, chatbot_id))
+def _just_logging(msg, chatbot_id):
+    app.logger.info('ChatBot[%s] replied %s' % (chatbot_id, msg))
 
 
-def _get_answers_and_states(sub_sock, timeout):
+def _get_answers_and_states(sub_sock, poller, timeout):
     raw_answers = [wrap_msg('ahoj'), wrap_msg('ahoj2')]
     raw_belief_states = [{'name': BELIEF_STATE, 'attributes': "state1"}, {'name': BELIEF_STATE, 'attributes': "state2"}]
     # TODO asserts about names SYSTEM and BELIEF_STATE
+
+    raw_answers, raw_belief_states = [], []
+    start = datetime.now()
+    while (datetime.now() - start).total_seconds() < timeout:
+        app.logger.debug('seconds remaining till timeout %f', (datetime.now() - start).total_seconds())
+        remaining = (datetime.now() - start).total_seconds() - timeout
+        socks = dict(poller.poll(timeout=remaining))
+        app.logger.debug('after poll')
+        if sub_sock in socks and socks[sub_sock] == zmqg.POLLIN:
+            _, msg = topic_msg_to_json(sub_sock.recv())
+            assert 'name' in msg, 'Broken msg %s' % msg
+            if msg['name'] == SYSTEM:
+                raw_answers.append(msg)
+            elif msg['name'] == BELIEF_STATE:
+                raw_belief_states.append(msg)
+            else:
+                app.logger.warning('Unknown message from ChatBot')
     answers = [m['utterance'] for m in raw_answers]
     belief_states = [bs['attributes'] for bs in raw_belief_states]
+
     return answers, belief_states
 
 
-def _gen_data(cbc, recorded_ms, replay_listener, timeout=0.1):
+def _gen_data(cbc, recorded_ms, replay_listener, poller, timeout=2.1):
     recorded_turns = turnify_conversation(recorded_ms)
     i = 0
-    print 'ONDRA DEBUG-1 ', len(recorded_turns)
     while i < len(recorded_turns):
-        print 'ONDRA DEBUG0: \n%s\n' % recorded_turns[i]
         if recorded_turns[i][HUMAN] is not None:
             d = recorded_turns[i]
             app.logger.debug('Sending msg to replay bot %s' % d[HUMAN])
             cbc.send(wrap_msg(d[HUMAN]))
             try:
-                anws, bss = _get_answers_and_states(replay_listener, timeout)
+                anws, bss = _get_answers_and_states(replay_listener, poller, timeout)
                 for j, (a, b) in enumerate(izip_longest(anws, bss)):
-                    print 'ONDRA DEBUG generated answers: ', j, i, '\n', a, b
                     if j == 0:
                         d[REPLAYED], d[BELIEF_STATE_REPLAY] = a, b
                         i += 1
@@ -172,20 +189,21 @@ def _gen_data(cbc, recorded_ms, replay_listener, timeout=0.1):
                             new_d[REPLAYED], new_d[BELIEF_STATE_REPLAY] = a, b
                             yield new_d
             except Empty:
-                app.logger.debug('System not responded to "%s"' % d[HUMAN])
+                app.logger.warning('System not responded to "%s"' % d[HUMAN])
         else:
             i += 1
             yield d
-        print 'ONDRA DEBUG end of while loop', i
-    print 'ONDRA DEBUG3 while loop finished', i
     cbc.kill()
 
 
 def _replay_log(abs_path):
-    cbc = ChatBotConnector(_store_to_queue, bot_input, bot_output, user_input, user_output, ctx=ctx)
+    cbc = ChatBotConnector(_just_logging, bot_input, bot_output, user_input, user_output, ctx=ctx)
     cbc.start()
     replay_listener = ctx.socket(zmqg.SUB)
-    replay_listener.setsockopt_string(zmqg.SUBSCRIBE, '%s' % cbc.name)
+    replay_listener.setsockopt_string(zmqg.SUBSCRIBE, '')
+    poller = zmqg.Poller()
+    poller.register(replay_listener, zmqg.POLLIN)
+    replay_listener.connect(LOGGING_ADDRESS)
 
     # TODO fix handlers so it does not polute the logs with user human interactive communication
     if not cbc.initialized.get():
@@ -195,7 +213,7 @@ def _replay_log(abs_path):
         res = Response(stream_with_context(
             _stream_template('log.html',
                              headers=EXTENDED_VALUES_TURN,
-                             data=_gen_data(cbc, msgs, replay_listener))))
+                             data=_gen_data(cbc, msgs, replay_listener, poller))))
     return res
 
 
@@ -215,15 +233,6 @@ def page_not_found(e):
 def internal_server_err(e):
     app.logger.error('Internal server error 500: %s', e)
     return render_template("error.html", error='500', msg=e), 500
-
-
-def setup_logging(config_path, default_level=logging.DEBUG):
-    if os.path.exists(config_path):
-        with open(config_path, 'r') as f:
-            config = json.load(f)
-            logging.config.dictConfig(config)
-    else:
-        logging.basicConfig(level=default_level)
 
 
 if __name__ == '__main__':
@@ -251,7 +260,7 @@ if __name__ == '__main__':
         raise KeyError("argument root is not a directory: %s" % root)
 
     setup_logging(log_config)
-    log_process, forwarder_process_bot, forwarder_process_user = start_zmq_and_log_processes(ctx, bot_input, bot_output,
+    log_process, forwarder_process_bot, forwarder_process_user = start_zmq_and_log_processes(bot_input, bot_output,
                                                                                              user_input, user_output)
     try:
         app.run(host=host, port=port, debug=args.debug, use_reloader=False)

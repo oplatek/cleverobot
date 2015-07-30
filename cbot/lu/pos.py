@@ -60,6 +60,7 @@ class PerceptronTagger(object):
     model_loc = os.path.join(os.path.dirname(__file__), 'tagger.pickle')  # TODO make it symmetric for store/load
 
     def __init__(self, classes=None, load=True):
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.tagdict = {}
         if classes:
             self.classes = classes
@@ -94,7 +95,7 @@ class PerceptronTagger(object):
                 sc, st = self.train_one(words, tags)
                 c, t = c + sc, t + st
             random.shuffle(sentences)
-            logging.debug("Iter {0}: {1}/{2}={3}".format(iter_, c, t, c / t))
+            self.logger.debug("Iter {0}: {1}/{2}={3}".format(iter_, c, t, c / t))
 
     def save(self, loc=None):
         if loc is None:

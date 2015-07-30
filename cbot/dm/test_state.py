@@ -5,11 +5,11 @@ from cbot.dm.state import SimpleTurnState
 
 class TestLogging(unittest.TestCase):
     def setUp(self):
-        self.utts = ['', 'Hi how are you?', 'I like Little Richard']
+        self.utterances = ['', 'Hi how are you?', 'I like Little Richard']
 
     def test_repr_json(self):
         s = SimpleTurnState(None)
-        for utt in self.utts:
+        for utt in self.utterances:
             s.current_user_utterance = utt
             s.update_mentions()
             rep = repr(s)

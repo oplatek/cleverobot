@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # encoding: utf-8
+import logging
 import unittest
 import datetime
 import app.cleverobot.run as run
@@ -28,22 +29,23 @@ class TestSocketIO(unittest.TestCase):
         self.client = run.socketio.test_client(run.app)
         port_offset = len(__file__)  # TODO hack randomize ports
         self.log_process, self.forwarder_process_bot, self.forwarder_process_user = run.start_zmq_and_log_processes(
-            run.ctx, run.bot_input + port_offset, run.bot_output + port_offset,
+            run.bot_input + port_offset, run.bot_output + port_offset,
             run.user_input + port_offset, run.user_output + port_offset)
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
     def tearDown(self):
         self.client.disconnect()
         run.shut_down(self.forwarder_process_bot, self.forwarder_process_user, self.log_process)
         del self.client
 
-    @unittest.expectedFailure
+    # @unittest.expectedFailure
     def test_connect(self):
         self.client.emit('begin', {'setup': 'unused'})
         time.sleep(0.2)
         self.client.emit('utterance', {'time_sent': str(datetime.datetime.now()), 'name': HUMAN, 'utterance': 'Hi'})
         self.client.emit('end', {'time_sent': str(datetime.datetime.now()), 'name': HUMAN, 'utterance': 'Hi'})
         received = self.client.get_received()
-        print received
+        self.logger.debug(received)
 
 
 if __name__ == '__main__':

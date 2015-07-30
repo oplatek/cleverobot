@@ -2,9 +2,11 @@
 # encoding: utf-8
 from __future__ import unicode_literals
 from greenlet import GreenletExit
+import json
 import multiprocessing
 import time
 import logging
+import cbot
 from cbot.bot.alias import BELIEF_STATE, SYSTEM, HUMAN
 import cbot.bot.log as cblog
 import uuid
@@ -13,7 +15,6 @@ import zmq.green as zmqg
 import zmq
 from zmq.devices import ProcessDevice
 from gevent import Greenlet
-from zmq.utils import jsonapi
 
 from cbot.kb.kb_data import data
 from cbot.dm.state import SimpleTurnState, Utterance
@@ -27,11 +28,9 @@ class ChatBot(object):
         self.send_reply = send_reply
         self.name = str(name)
 
-        self.logger = logging.getLogger(str(self.name))
-        name = '%s_%s' % (time.time(), self.name)
-        self.logger.addHandler(cblog.create_local_logging_handler(name, suffix='dm_logic', log_level=logging.INFO))
-        self.logger.addHandler(
-            cblog.create_local_logging_handler(name, suffix='input_output', log_level=logging.WARNING))
+        logger_name, ctx = __name__ + '.' + self.__class__.__name__, zmqg.Context()
+        self.logger = logging.getLogger(logger_name)
+        cblog.connect_logger(logger_name, self.name, ctx)
 
         self.kb = kb.KnowledgeBase()
         self.kb.load_default_models()
@@ -43,11 +42,11 @@ class ChatBot(object):
     def receive_msg(self, msg):
         # TODO use gevent.AsyncResult to make it asynchronous
         assert msg is not None and 'utterance' in msg and 'name' in msg, 'Broken msg: %s' % msg
-        self.logger.warning('%s', jsonapi.dumps(msg))
+        self.logger.warning(json.dumps(msg))
 
         self.policy.update_state(Utterance(msg['utterance']))
         response = self.policy.act()
-        self.logger.info(self.policy.state)
+        self.logger.info(str(self.policy.state))
 
         # TODO REMOVE DUPLICATE name and user
         m = {'utterance': response,
@@ -56,16 +55,16 @@ class ChatBot(object):
              'name': SYSTEM,
              'session': self.name, }
         self.send_reply(m)
-        self.logger.warning('%s', jsonapi.dumps(m))
+        self.logger.warning(json.dumps(m))
 
 
-def forwarder_device_start(frontend_port, backend_port, logger=None):
+def forwarder_device_start(frontend_port, backend_port):
     forwarder = ProcessDevice(zmq.FORWARDER, zmq.SUB, zmq.PUB)
     forwarder.setsockopt_in(zmq.SUBSCRIBE, b'')
 
-    if logger is not None:
-        logger.debug('forwarder binding in to tcp://*:%d', frontend_port)
-        logger.debug('forwarder binding out to tcp://*:%d', backend_port)
+    logger = logging.getLogger(__name__)
+    logger.debug('forwarder binding in to tcp://*:%d', frontend_port)
+    logger.debug('forwarder binding out to tcp://*:%d', backend_port)
     forwarder.bind_in("tcp://*:%d" % frontend_port)
     forwarder.bind_out("tcp://*:%d" % backend_port)
 
@@ -95,8 +94,7 @@ class ChatBotConnector(Greenlet):
         self.sub2bot.connect('tcp://127.0.0.1:%d' % user_back_port)
         self.init_sync_signal.connect('tcp://127.0.0.1:%d' % user_back_port)
 
-        self.logger = logging.getLogger(self.__class__.__name__ + str(name))
-        cblog.connect_logger(self.logger, self.context)
+        self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.bot = ChatBotProcess(name, bot_back_port, user_front_port)
         self.bot.start()
 
@@ -137,7 +135,7 @@ class ChatBotConnector(Greenlet):
         msg['time'] = time.time()
         msg['session'] = self.name
         self.logger.debug('send(): %s', msg)
-        self.pub2bot.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
+        self.pub2bot.send_string('%s %s' % (self.name, json.dumps(msg)))
 
     def _run(self):
         self.logger.debug('%s started listening for ChatBot msgs ' % str(self.__class__.__name__) + self.name)
@@ -149,7 +147,7 @@ class ChatBotConnector(Greenlet):
                 self.logger.debug('after poll')
                 if self.sub2bot in socks and socks[self.sub2bot] == zmq.POLLIN:
                     _, msg = cblog.topic_msg_to_json(self.sub2bot.recv())
-                    self.logger.debug('_run(): %s', self.name, msg)
+                    self.logger.debug('_run(): %s', msg)
                     self.response(msg, self.name)
         except Exception as e:
             self.logger.exception(e)
@@ -192,7 +190,7 @@ class ChatBotProcess(multiprocessing.Process):
             _, msg = cblog.topic_msg_to_json(self.isocket.recv())
             # hack - control signal from user
             if msg['utterance'].lower() == 'your id' or msg['utterance'].lower() == 'your id, please!':
-                self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(cblog.wrap_msg(self.name))))
+                self.osocket.send_string('%s %s' % (self.name, json.dumps(cblog.wrap_msg(self.name))))
             else:
                 if 'name' not in msg and 'user' in msg:
                     msg['name'] = msg['user']  # TODO HACK for backward compatibility
@@ -210,10 +208,10 @@ class ChatBotProcess(multiprocessing.Process):
             assert stat_req == 'request', 'stat_req %s' % stat_req
             self.logger.debug('ChatBot %s received stats request', self.name)
             stats = {'time': time.time(), 'history_len': len(self.policy.state.history)}
-            self.osocket.send_string('stat_%s %s' % (self.name, jsonapi.dumps(stats)))
+            self.osocket.send_string('stat_%s %s' % (self.name, json.dumps(stats)))
 
     def send_msg(self, msg):
-        self.osocket.send_string('%s %s' % (self.name, jsonapi.dumps(msg)))
+        self.osocket.send_string('%s %s' % (self.name, json.dumps(msg)))
 
     def zmq_init(self):
         self.context = zmq.Context()
@@ -242,8 +240,6 @@ class ChatBotProcess(multiprocessing.Process):
         chatbot = ChatBot(self.name, self.send_msg)
         self.logger.debug('Starting zmq_init synchronisation.')
         self.zmq_init()
-        self.logger.debug('Connect zmq logger')
-        cblog.connect_logger(self.logger, self.context)
         self.logger.debug(str(self))
         while self.should_run():
             self.receive_msg(chatbot)

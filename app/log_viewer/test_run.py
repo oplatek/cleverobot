@@ -33,7 +33,7 @@ class ReplayingLogTestCase(unittest.TestCase):
         run.app.config['TESTING'] = True
         self.client = run.app.test_client()
         self.log_process, self.forwarder_process_bot, self.forwarder_process_user = \
-            start_zmq_and_log_processes(run.ctx, run.bot_input + port_offset, run.bot_output + port_offset,
+            start_zmq_and_log_processes(run.bot_input + port_offset, run.bot_output + port_offset,
                                         run.user_input + port_offset, run.user_output + port_offset)
 
     def tearDown(self):
