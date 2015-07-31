@@ -142,10 +142,10 @@ def _get_answers_and_states(sub_sock, poller, timeout):
 
     raw_answers, raw_belief_states = [], []
     start = datetime.now()
-    while (datetime.now() - start).total_seconds() < timeout:
-        app.logger.debug('seconds remaining till timeout %f', (datetime.now() - start).total_seconds())
-        remaining = (datetime.now() - start).total_seconds() - timeout
-        socks = dict(poller.poll(timeout=0.1))
+    remaining = timeout - (datetime.now() - start).total_seconds()
+    while remaining > 0:
+        app.logger.debug('seconds remaining till timeout %f', remaining)
+        socks = dict(poller.poll(timeout=remaining))
         app.logger.debug('after poll')
         if sub_sock in socks and socks[sub_sock] == zmqg.POLLIN:
             _, msg = topic_msg_to_json(sub_sock.recv())
@@ -156,6 +156,7 @@ def _get_answers_and_states(sub_sock, poller, timeout):
                 raw_belief_states.append(msg)
             else:
                 app.logger.warning('Unknown message from ChatBot')
+        remaining = timeout - (datetime.now() - start).total_seconds()
     answers = [m['utterance'] for m in raw_answers]
     belief_states = [bs['attributes'] for bs in raw_belief_states]
 
@@ -166,11 +167,13 @@ def _gen_data(cbc, recorded_ms, replay_listener, poller, timeout=0.1):
     recorded_turns = turnify_conversation(recorded_ms)
     i = 0
     while i < len(recorded_turns):
+        app.logger.debug('processing [%d/%d] turns' % (i, len(recorded_turns)))
         if recorded_turns[i][HUMAN] is not None:
             app.logger.debug('%d: Sending msg to replay bot %s' % (i, recorded_turns[i][HUMAN]))
             cbc.send(wrap_msg(recorded_turns[i][HUMAN]))
             try:
                 anws, bss = _get_answers_and_states(replay_listener, poller, timeout)
+                app.logger.debug('answers and belief states: \n%s\n%s' % (anws, bss))
                 for j, (a, b) in enumerate(izip_longest(anws, bss)):
                     if j == 0:
                         i += 1
@@ -188,6 +191,8 @@ def _gen_data(cbc, recorded_ms, replay_listener, poller, timeout=0.1):
                             new_turn[REPLAYED], new_turn[BELIEF_STATE_REPLAY] = a, b
                             yield new_turn
                 else:
+                    recorded_turns[i][REPLAYED], recorded_turns[i][BELIEF_STATE_REPLAY] = None, None
+                    yield recorded_turns[i]
                     i += 1
             except Empty:
                 i += 1
