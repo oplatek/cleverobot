@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import os
-from app.cleverobot.run import start_zmq_and_log_processes, shut_down
+from app.cleverobot.run import shutdown_zmq_processes, start_zmq_processes
 import unittest
 import app.log_viewer.run as run
+from cbot.bot.alias import REPLAYED
 
 
 class RoutingTestCase(unittest.TestCase):
@@ -32,13 +33,13 @@ class ReplayingLogTestCase(unittest.TestCase):
         port_offset = 0  # len(__file__)  # TODO hack randomize ports TODO works only 0 probably bug
         run.app.config['TESTING'] = True
         self.client = run.app.test_client()
-        self.log_process, self.forwarder_process_bot, self.forwarder_process_user = \
-            start_zmq_and_log_processes(run.bot_input + port_offset, run.bot_output + port_offset,
+        self.forwarder_process_bot, self.forwarder_process_user = \
+            start_zmq_processes(run.bot_input + port_offset, run.bot_output + port_offset,
                                         run.user_input + port_offset, run.user_output + port_offset)
 
     def tearDown(self):
         self.client.delete()
-        shut_down(self.forwarder_process_bot, self.forwarder_process_user, self.log_process)
+        shutdown_zmq_processes(self.forwarder_process_bot, self.forwarder_process_user)
 
     def test_display_recorded_data(self):
         rs = self.client.get('/log?path=test_dm_logic.log')
@@ -50,7 +51,7 @@ class ReplayingLogTestCase(unittest.TestCase):
         rs = self.client.get('/log?path=test_dm_logic.log')
         current_system = []
         for line in rs.data.split('\n'):
-            if "current_system" in line:
+            if REPLAYED in line:
                 reply = line[line.find(".text(") + 6:-2]
                 current_system.append(reply)
         print 'All responses: %s\n' % current_system

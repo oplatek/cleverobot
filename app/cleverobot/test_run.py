@@ -28,14 +28,14 @@ class TestSocketIO(unittest.TestCase):
     def setUp(self):
         self.client = run.socketio.test_client(run.app)
         port_offset = len(__file__)  # TODO hack randomize ports
-        self.log_process, self.forwarder_process_bot, self.forwarder_process_user = run.start_zmq_and_log_processes(
+        self.forwarder_process_bot, self.forwarder_process_user = run.start_zmq_processes(
             run.bot_input + port_offset, run.bot_output + port_offset,
             run.user_input + port_offset, run.user_output + port_offset)
         self.logger = logging.getLogger(__name__ + '.' + self.__class__.__name__)
 
     def tearDown(self):
         self.client.disconnect()
-        run.shut_down(self.forwarder_process_bot, self.forwarder_process_user, self.log_process)
+        run.shutdown_zmq_processes(self.forwarder_process_bot, self.forwarder_process_user)
         del self.client
 
     # @unittest.expectedFailure

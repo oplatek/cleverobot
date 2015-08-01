@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # encoding: utf-8
 from __future__ import unicode_literals
-import logging
 import os
 import time
 from flask import Flask, render_template, request, jsonify
@@ -141,33 +140,41 @@ def web_response(msg, room_id):
     app.logger.debug('sent: %s to %s', msg, room_id)
 
 
-def shut_down(forwarder_process_bot, forwarder_process_user, log_process):
+def start_zmq_processes(bot_in, bot_out, user_in, user_out):
+    try:
+        forwarder_process_bot = forwarder_device_start(bot_in, bot_out)
+        forwarder_process_user = forwarder_device_start(user_in, user_out)
+
+        pub2bot.connect('tcp://127.0.0.1:%d' % bot_input)
+        return forwarder_process_bot, forwarder_process_user
+    except Exception as e:
+        shutdown_zmq_processes(forwarder_process_bot, forwarder_process_user)
+        app.logger.error("Exception during setup processes %s" % str(e), exc_info=True)
+
+
+def shutdown_zmq_processes(forwarder_process_bot, forwarder_process_user):
     if forwarder_process_bot is not None:
         forwarder_process_bot.join(timeout=0.1)
         print 'TODO terminate zmq_device'
     if forwarder_process_user is not None:
         forwarder_process_user.join(timeout=0.1)
         print 'TODO terminate zmq_device'
-    if log_process is not None:
-        log_process.join(timeout=0.1)
-        log_process.terminate()
 
 
-def start_zmq_and_log_processes(bot_in, bot_out, user_in, user_out):
-    log_process, forwarder_process_bot, forwarder_process_user = None, None, None
+def start_log_process():
     try:
         log_process = Process(target=chatbot2file_log_loop, kwargs={'log_name': log_name})
         log_process.start()
-
-        forwarder_process_bot = forwarder_device_start(bot_in, bot_out)
-        forwarder_process_user = forwarder_device_start(user_in, user_out)
-
-        pub2bot.connect('tcp://127.0.0.1:%d' % bot_input)
+        return log_process
     except Exception as e:
-        shut_down(forwarder_process_bot, forwarder_process_user, log_process)
+        shutdown_log_process(log_process)
         app.logger.error("Exception during setup processes %s" % str(e), exc_info=True)
-        raise e
-    return log_process, forwarder_process_bot, forwarder_process_user
+
+
+def shutdown_log_process(log_process):
+    if log_process is not None:
+        log_process.join(timeout=0.1)
+        log_process.terminate()
 
 
 if __name__ == '__main__':
@@ -190,7 +197,8 @@ if __name__ == '__main__':
     host, port, log_name, log_config = args.host, args.port, args.log, args.log_config
 
     setup_logging(log_config)
-    log_process, forwarder_process_bot, forwarder_process_user = start_zmq_and_log_processes(bot_input, bot_output, user_input, user_output)
+    forwarder_process_bot, forwarder_process_user = start_zmq_processes(bot_input, bot_output, user_input, user_output)
+    log_process = start_log_process()
     try:
         socketio.run(app, host=host, port=port, use_reloader=False,)
     except Exception as e:
@@ -199,4 +207,5 @@ if __name__ == '__main__':
         if app.debug:
             raise e
     finally:
-        shut_down(forwarder_process_bot, forwarder_process_user, log_process)
+        shutdown_zmq_processes(forwarder_process_bot, forwarder_process_user)
+        shutdown_log_process(log_process)

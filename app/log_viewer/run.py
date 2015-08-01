@@ -7,9 +7,9 @@ from itertools import izip_longest
 import json
 import logging
 import os
-from datetime import datetime
+import time
 from zmq.utils import jsonapi
-from app.cleverobot.run import start_zmq_and_log_processes, shut_down
+from app.cleverobot.run import shutdown_zmq_processes, start_zmq_processes
 import zmq.green as zmqg
 from flask import Flask, render_template, request, Response, stream_with_context
 import functools
@@ -17,7 +17,8 @@ import cbot
 from cbot.bot.connectors import ChatBotConnector
 from cbot.bot.log import wrap_msg, topic_msg_to_json, setup_logging
 from cbot.bot.alias import HUMAN, BELIEF_STATE, SYSTEM, REPLAYED, BELIEF_STATE_REPLAY, LOGGING_ADDRESS
-from gevent.queue import Queue, Empty
+from gevent.queue import Empty
+
 
 app = Flask(__name__)
 app.secret_key = 12345  # TODO
@@ -28,6 +29,12 @@ bot_input, bot_output = 6665, 7776
 user_input, user_output = 8887, 9998
 host, port = '0.0.0.0', 4000
 ctx = zmqg.Context()
+
+replay_listener = ctx.socket(zmqg.SUB)
+replay_listener.setsockopt_string(zmqg.SUBSCRIBE, '')
+replay_listener.bind(LOGGING_ADDRESS)
+poller = zmqg.Poller()
+poller.register(replay_listener, zmqg.POLLIN)
 
 FLAT_EMPTY_TURN = OrderedDict([(k, None) for k in [HUMAN, SYSTEM, BELIEF_STATE]])
 PICK_VALUES_TURN = {BELIEF_STATE: 'attributes', SYSTEM: 'utterance', HUMAN: 'utterance'}
@@ -135,20 +142,21 @@ def _just_logging(msg, chatbot_id):
     app.logger.info('ChatBot[%s] replied %s' % (chatbot_id, msg))
 
 
-def _get_answers_and_states(sub_sock, poller, timeout):
-    raw_answers = [wrap_msg('ahoj'), wrap_msg('ahoj2')]
-    raw_belief_states = [{'name': BELIEF_STATE, 'attributes': "state1"}, {'name': BELIEF_STATE, 'attributes': "state2"}]
-    # TODO asserts about names SYSTEM and BELIEF_STATE
-
+def _get_answers_and_states(timeout):
+    assert timeout >= 0
     raw_answers, raw_belief_states = [], []
-    start = datetime.now()
-    remaining = timeout - (datetime.now() - start).total_seconds()
-    while remaining > 0:
-        app.logger.debug('seconds remaining till timeout %f', remaining)
+    start = time.clock()
+    remaining = timeout + start - time.clock()
+    eps = timeout / 10.0
+    while remaining > eps:
+        # app.logger.debug('seconds remaining till timeout %f', remaining)
         socks = dict(poller.poll(timeout=remaining))
-        app.logger.debug('after poll')
-        if sub_sock in socks and socks[sub_sock] == zmqg.POLLIN:
-            _, msg = topic_msg_to_json(sub_sock.recv())
+        # app.logger.debug('after poll')
+        if replay_listener in socks and socks[replay_listener] == zmqg.POLLIN:
+            app.logger.debug('Received message.')
+            level, anw = replay_listener.recv_multipart()
+            app.logger.debug('Reply answer: %s' % str(anw))
+            _, msg = topic_msg_to_json(anw)
             assert 'name' in msg, 'Broken msg %s' % msg
             if msg['name'] == SYSTEM:
                 raw_answers.append(msg)
@@ -156,14 +164,17 @@ def _get_answers_and_states(sub_sock, poller, timeout):
                 raw_belief_states.append(msg)
             else:
                 app.logger.warning('Unknown message from ChatBot')
-        remaining = timeout - (datetime.now() - start).total_seconds()
-    answers = [m['utterance'] for m in raw_answers]
-    belief_states = [bs['attributes'] for bs in raw_belief_states]
+        else:
+            # app.logger.debug('Nothing received, just timeout expired.')
+            pass
+        remaining = timeout + start - time.clock()
+    answers = [str(m['utterance']) for m in raw_answers]
+    belief_states = [json.dumps(bs['attributes'], sort_keys=True, indent=4, separators=(',', ': ')) for bs in raw_belief_states]
 
     return answers, belief_states
 
 
-def _gen_data(cbc, recorded_ms, replay_listener, poller, timeout=0.1):
+def _gen_data(cbc, recorded_ms, replay_listener, timeout=0.1):
     recorded_turns = turnify_conversation(recorded_ms)
     i = 0
     while i < len(recorded_turns):
@@ -172,13 +183,15 @@ def _gen_data(cbc, recorded_ms, replay_listener, poller, timeout=0.1):
             app.logger.debug('%d: Sending msg to replay bot %s' % (i, recorded_turns[i][HUMAN]))
             cbc.send(wrap_msg(recorded_turns[i][HUMAN]))
             try:
-                anws, bss = _get_answers_and_states(replay_listener, poller, timeout)
-                app.logger.debug('answers and belief states: \n%s\n%s' % (anws, bss))
-                for j, (a, b) in enumerate(izip_longest(anws, bss)):
+                anws, bss = _get_answers_and_states(timeout)
+                app.logger.debug('answers and belief states: %s' % [(a,b) for a,b in izip_longest(anws, bss)])
+                anws_bss = list(izip_longest(anws, bss))
+                for j, (a, b) in enumerate(anws_bss):
+                    app.logger.debug('j: %d, i: %d' % (j, i))
                     if j == 0:
-                        i += 1
                         recorded_turns[i][REPLAYED], recorded_turns[i][BELIEF_STATE_REPLAY] = a, b
                         yield recorded_turns[i]
+                        i += 1
                     else:  # j >= 1
                         # More answer for one input
                         if i < len(recorded_turns) and recorded_turns[i][HUMAN] is None:
@@ -190,7 +203,8 @@ def _gen_data(cbc, recorded_ms, replay_listener, poller, timeout=0.1):
                             new_turn = FLAT_EMPTY_TURN.copy()
                             new_turn[REPLAYED], new_turn[BELIEF_STATE_REPLAY] = a, b
                             yield new_turn
-                else:
+                if len(anws_bss) == 0:
+                    app.logger.info("No replayed answers.")
                     recorded_turns[i][REPLAYED], recorded_turns[i][BELIEF_STATE_REPLAY] = None, None
                     yield recorded_turns[i]
                     i += 1
@@ -200,17 +214,13 @@ def _gen_data(cbc, recorded_ms, replay_listener, poller, timeout=0.1):
         else:
             yield recorded_turns[i]
             i += 1
+        app.logger.debug("finished processing %d turn" % i)
     cbc.kill()
 
 
 def _replay_log(abs_path):
     cbc = ChatBotConnector(_just_logging, bot_input, bot_output, user_input, user_output, ctx=ctx)
     cbc.start()
-    replay_listener = ctx.socket(zmqg.SUB)
-    replay_listener.setsockopt_string(zmqg.SUBSCRIBE, '')
-    poller = zmqg.Poller()
-    poller.register(replay_listener, zmqg.POLLIN)
-    replay_listener.connect(LOGGING_ADDRESS)
 
     # TODO fix handlers so it does not polute the logs with user human interactive communication
     if not cbc.initialized.get():
@@ -220,7 +230,7 @@ def _replay_log(abs_path):
         res = Response(stream_with_context(
             _stream_template('log.html',
                              headers=EXTENDED_VALUES_TURN,
-                             data=_gen_data(cbc, msgs, replay_listener, poller))))
+                             data=_gen_data(cbc, msgs, replay_listener))))
     return res
 
 
@@ -267,8 +277,7 @@ if __name__ == '__main__':
         raise KeyError("argument root is not a directory: %s" % root)
 
     setup_logging(log_config)
-    log_process, forwarder_process_bot, forwarder_process_user = start_zmq_and_log_processes(bot_input, bot_output,
-                                                                                             user_input, user_output)
+    forwarder_process_bot, forwarder_process_user = start_zmq_processes(bot_input, bot_output, user_input, user_output)
     try:
         app.run(host=host, port=port, debug=args.debug, use_reloader=False)
     except Exception as e:
@@ -277,4 +286,4 @@ if __name__ == '__main__':
         if app.debug:
             raise e
     finally:
-        shut_down(forwarder_process_bot, forwarder_process_user, log_process)
+        shutdown_zmq_processes(forwarder_process_bot, forwarder_process_user)
