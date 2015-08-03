@@ -32,7 +32,7 @@ docker-run: nltk_data
 	docker run $(VOLUMES) -e ADDRESS=0.0.0.0 -p $(PORT):$(PORT) -i -t --rm oplatek/cleverobot /bin/bash -c '$(RUN_BOT)'
 
 #### tests ####
-UNIT_TEST=export NLTK_DATA=`pwd`/nltk_data; nosetests cbot
+UNIT_TEST=export NLTK_DATA=`pwd`/nltk_data; nosetests --with-coverage cbot
 INTEGRATION_TEST=echo "SKIPPING integration tests TODO single instance expected: FAILING export NLTK_DATA=`pwd`/nltk_data; nosetests app"
 
 test: unit-test integration-test
