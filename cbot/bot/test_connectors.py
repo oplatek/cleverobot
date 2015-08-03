@@ -30,8 +30,7 @@ class LoggerTest(unittest.TestCase):
         logger.info(json.dumps(wrap_msg('Info test')))
         time.sleep(0.1)
         logger.warning('{"name": "test"}')
-        time.sleep(0.1)
-        logger.debug('{"special debug": "value"}')
+        # self.assertRaises(ValueError, logger.debug, json.dumps(wrap_msg('debug')))  # FIXME test that exception raised in another process
 
         log_process.join(0.1)  # TODO send message to exit the logger
         log_process.terminate()

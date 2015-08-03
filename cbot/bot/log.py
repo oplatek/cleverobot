@@ -148,13 +148,11 @@ def connect_logger(logger_name, session_name, context, address=LOGGING_ADDRESS):
     pub = context.socket(zmq.PUB)
     pub.connect(address)
     handler = ChatBotPUBHandler(pub, session_name)
-    f = logging.Formatter("%(levelname)s %(filename)s:%(lineno)d %(funcName)s:\n\t%(message)s\n")
-    # FIXME hack -> rewrite nicely
-    PUBHandler.formatters[logging.DEBUG] = f
-
+    f = logging.Formatter("%(message)s\n")
     # special logic for ChatBot TODO define my own logging levels
-    PUBHandler.formatters[logging.WARNING] = logging.Formatter('%(message)s\n')
-    PUBHandler.formatters[logging.INFO] = logging.Formatter('%(message)s\n')
+    PUBHandler.formatters[logging.DEBUG] = f
+    PUBHandler.formatters[logging.WARNING] = f
+    PUBHandler.formatters[logging.INFO] = f
     logger.addHandler(handler)
 
     logger.setLevel(logging.DEBUG)  # filtering will be done at the listener side
